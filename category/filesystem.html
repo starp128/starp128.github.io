@@ -4,7 +4,7 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>about me</title>
+  <title>pumumu's blog</title>
   <meta name="author" content="pumumu">
 
 
@@ -51,24 +51,40 @@
 </ul></nav>
   <div id="main">
     <div id="content">
-<div>
-  <article role="article">
-    <header>
-      <h1 class="entry-title">about me</h1>
-    </header>
-    <p>This page is under construction right now. Please waiting!</p>
-<p><img alt="" src="../images/underworking.jpg" /></p>
-  </article>
-</div>
+<div class="blog-index">
+  		<article>
+<header>
+      <h1 class="entry-title">
+        <a href="../minixwen-jian-xi-tong-xue-xi.html">minix文件系统学习</a>
+      </h1>
+      <p class="meta"><time datetime="2013-12-29T00:00:00" pubdate>Sun 29 December 2013</time></p>
+</header>
+
+  <div class="entry-content"><p>记录下学习过程，以便遗忘时可以顺着思路回忆起來。
+<em>一切尽在源码中！！！</em></p>
+<hr />
+<p>深入学习minix文件系统是从linux的0.11内核版本开始的，更确切的说，把硬盘分区、文件系统、虚拟文件系统、网络文件系统等概念弄清楚也是在仔细阅读了内核源码才清晰的。还记得之彻底明白0.11内核中minix源码以及之后的兴奋，以及之后阅读1.x版本内核中的ext，ext2和vfs等，每次都会有种醒悟的感觉。</p>
+<p>minix文件系统是源自minix操作系统的，linux0.11内核采用了这个现成的文件系统作为内核唯一支持的文件系统，当然在后续版本中才有了自己的ext等等其它文件系统。整个minix文件系统源码并不多。内容也非常精炼，非常适合开始学习文件系统。</p>
+<p>0.11版本内核还没有将虚拟文件系统VFS从实际的文件系统中抽象出来，因为那时就只有一种文件系统，到后来0.95版本的内核才将VFS分离出来，为各种文件系统共存提供了框架，后来Remy Card为linux内核写了第一个专门的文件系统ext文件系统，并加入到0.96版本的内核中。这都是90年代初的事情了。。。可惜我现在才整明白。
+文件系统的建立是独立于系统初始化的，换句话说，文件系统是事先就建立好的。比如安装系统时候你会给一个硬盘分区，然后格式化为一个文件系统，系统引导后初始化，是读取这个文件系统并将其挂载在自己的跟’/’上。</p>
+<hr />
+<h2>明确几个概念</h2>
+<ul>
+<li>MBR 超级块 inode位图 block位图 inode区 block区 ...</li></ul></div>
+  <footer>
+    <a rel="full-article" href="../minixwen-jian-xi-tong-xue-xi.html">Read On &crarr;</a>
+  </footer>
+  		</article>
+<div class="pagination">
+
+  <br />
+</div></div>
 <aside class="sidebar">
   <section>
     <h1>Recent Posts</h1>
     <ul id="recent_posts">
       <li class="post">
           <a href="../minixwen-jian-xi-tong-xue-xi.html">minix文件系统学习</a>
-      </li>
-      <li class="post">
-          <a href="../qi-dian.html">起点</a>
       </li>
     </ul>
   </section>
