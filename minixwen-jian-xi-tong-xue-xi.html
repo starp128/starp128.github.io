@@ -63,8 +63,12 @@
 <hr />
 <p>深入学习minix文件系统是从linux的0.11内核版本开始的，更确切的说，把硬盘分区、文件系统、虚拟文件系统、网络文件系统等概念弄清楚也是在仔细阅读了内核源码才清晰的。还记得读明白0.11内核中minix源码以及之后的兴奋，以及之后阅读1.x版本内核中的ext，ext2和vfs等，每次读懂一些内容都会有种醒悟的感觉。</p>
 <p>minix文件系统是源自minix操作系统的，linux0.11内核采用了这个现成的文件系统作为内核唯一支持的文件系统，当然在后续版本中就有了自己的ext等等其它文件系统。整个minix文件系统源码并不多。内容也非常精炼，非常适合开始学习文件系统。</p>
+<p>0.11内核tree,非常精炼，这样让我们集中经历看核心代码。</p>
+<p><img alt="" src="./images/linux_0_11_tree.png" title="“0.11内核tree”" /></p>
+<p>0.11内核minix文件系统源码</p>
+<p><img alt="" src="./images/linux_0_11_files.png" /></p>
 <p>0.11版本内核还没有将虚拟文件系统VFS从实际的文件系统中抽象出来，因为那时就只有一种文件系统，到后来0.95版本的内核才将VFS分离出来，为各种文件系统共存提供了框架，后来Remy Card为linux内核写了第一个专门的文件系统ext文件系统，并加入到0.96版本的内核中。这都是90年代初的事情了。。。可惜我现在才整明白。
-文件系统的建立是独立于系统初始化的，换句话说，文件系统是事先就建立好的。比如安装系统时候你会给一个硬盘分区，然后格式化为一个文件系统，系统引导后初始化，是读取这个文件系统并将其挂载在自己的跟××’/’××上。</p>
+文件系统的建立是独立于系统初始化的，换句话说，文件系统是事先就建立好的。比如安装系统时候你会给一个硬盘分区，然后格式化为一个文件系统，系统引导后初始化，是读取这个文件系统并将其挂载在自己的跟<strong>’/’</strong>上。</p>
 <hr />
 <h2>一、明确几个概念</h2>
 <ul>
@@ -159,7 +163,10 @@
 <p>比如rm，直接将目录项中sys_umlink就可以了，但是实际上文件还在硬盘上，只是用一般的方法下读不到了。</p>
 <hr />
 <h2>三、kernel-1.2.3内核根文件系统挂载</h2>
-<p>接下来以1.2.13的内核中的代码为例，说明minix文件系统是怎么挂载的，思想与上述基本相同，所不同的就是在1.2.13中内核从实际的文件系统中抽象出来一个虚拟文件系统VFS，由于内核支持众多文件系统，使用VFS作为接口与各个实际的文件系统进行“交流”，在内核<code>fork</code>出第一个进程<code>init</code>内部，调用<code>sys_setup</code>，这里面主要是一些文件系统的注册函数，使得内核知道，我都支持些文件系统，也就是有哪些文件系统的操作函数集。</p>
+<p>接下来以1.2.13的内核中的代码为例，说明minix文件系统是怎么挂载的，思想与上述基本相同，所不同的就是在1.2.13中内核从实际的文件系统中抽象出来一个虚拟文件系统VFS，由于内核支持众多文件系统，使用VFS作为接口与各个实际的文件系统进行“交流”.</p>
+<p>1.2.13将VFS与实际文件系统实现分离开，如下为新增的各种文件系统类型：</p>
+<p><img alt="" src="./images/linux_1_2_13_tree.png" /></p>
+<p>在内核<code>fork</code>出第一个进程<code>init</code>内部，调用<code>sys_setup</code>，这里面主要是一些文件系统的注册函数，使得内核知道，我都支持些文件系统，也就是有哪些文件系统的操作函数集。</p>
 <div class="highlight"><pre><span class="n">register_filesystem</span><span class="p">(</span><span class="o">&amp;</span><span class="p">(</span><span class="k">struct</span> <span class="n">file_system_type</span><span class="p">)</span>
     <span class="p">{</span><span class="n">minix_read_super</span><span class="p">,</span> <span class="s">&quot;minix&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">});</span>
 </pre></div>
@@ -227,11 +234,11 @@
 <hr />
 <h2>四、实验</h2>
 <p>制作一个minix的文件系统，并挂载使用它，深入分析它的结构。</p>
-<p>实验过程</p>
+<h2>实验过程</h2>
 <p>使用boch虚拟机作为主要实验环境，在boch中运行0.11的内核的linux系统（这个实验环境可以在<a href="http://www.oldlinux.org/">oldlinux</a>网站找到）。
 boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用这个内核搭建了一个简单系统，作为入门学习非常合适。接下来先制作一个影响文件模拟一个软盘。
 将这个软盘插入到boch虚拟机中，启动boch中的linux系统，并在这个软盘上创建minix文件系统，挂载它并使用它，最后分析这个映像文件来分析minix文件系统结构。</p>
-<p>实验步骤</p>
+<h2>实验步骤</h2>
 <h3>1 先制作一个minix的映像文件</h3>
 <p>使用任意linux系统执行一下命令：</p>
 <div class="highlight"><pre><span class="n">dd</span> <span class="k">if</span><span class="o">=/</span><span class="n">dev</span><span class="o">/</span><span class="n">zero</span> <span class="n">of</span><span class="o">=</span><span class="n">minix</span><span class="p">.</span><span class="n">img</span> <span class="n">bs</span><span class="o">=</span><span class="mi">1024</span> <span class="n">count</span><span class="o">=</span><span class="mi">1440</span>
@@ -252,6 +259,8 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
 
 
 <p>可以看到<code>super_block</code>如下</p>
+<p><img alt="" src="./images/minix_b1_super_block.png" /></p>
+<p>上图正好对应与<code>super_block</code>的内核数据结构。</p>
 <div class="highlight"><pre><span class="k">struct</span> <span class="n">super_block</span> <span class="p">{</span>
        <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_ninodes</span><span class="p">;</span>
        <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_nzones</span><span class="p">;</span>
@@ -273,8 +282,11 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
    <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">s_rd_only</span><span class="p">;</span>
    <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">s_dirt</span><span class="p">;</span>
 <span class="p">};</span>
+</pre></div>
 
-<span class="cp">#define SUPER_MAGIC 0x137F</span>
+
+<p>由上图可以看出<code>s_magic</code>为0x137F，挂载文件系统时要检查这个值，如下：</p>
+<div class="highlight"><pre><span class="cp">#define SUPER_MAGIC 0x137F</span>
 <span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_magic</span> <span class="o">!=</span> <span class="n">SUPER_MAGIC</span><span class="p">)</span> <span class="p">{</span>
     <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
     <span class="n">free_super</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
@@ -283,10 +295,17 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
 </pre></div>
 
 
-<p>Inode block map
-位图中显示有三个inode，bit0对应的0号不适用，1号就是根inode 2号是自己创建的“dir”的inode</p>
-<p>Block map
-也是有三个块，0块不用，一块是根目录的数据块，2号块是dir目录的数据块，尽管是一个空目录，但他还是占用了一个数据块，实际上这个块里面放着”.””..”两个目录项，指向当前目录和上层目录。</p>
+<p>Inode block map</p>
+<p><img alt="" src="./images/minix_b2_inode_map.png" /></p>
+<p>位图中显示有三个inode，bit0对应的0号不适用，1号就是根inode 2号是自己创建的“dir”的inode</p>
+<p>Block map</p>
+<p><img alt="" src="./images/minix_b3_block_map.png" /></p>
+<p>也是有三个块，0块不用，一块是根目录的数据块，2号块是dir目录的数据块，尽管是一个空目录，但他还是占用了一个数据块，实际上这个块里面放着”.””..”两个目录项，指向当前目录和上层目录。</p>
+<p>inode</p>
+<p>这里放置了inode。</p>
+<p><img alt="" src="./images/minix_b4_inode.png" /></p>
+<p>下面是一张比较完整的图：</p>
+<p><img alt="" src="./images/minix_img.png" /></p>
 <p>上面记录了学习文件系统的过程，已备以后查看，不足之处还望指教。</p>
 <p>参考资料</p>
 <p><a href="http://www.oldlinux.org/">oldlinux</a></p>
