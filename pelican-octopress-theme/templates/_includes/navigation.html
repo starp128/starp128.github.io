@@ -1,10 +1,12 @@
 <ul class="subscription" data-subscription="rss">
+  <li><a href="https://github.com/starp128">Me on Github</a></li>
+
   <li><a href="{{ FEED_DOMAIN }}/{{ FEED_ATOM }}" rel="subscribe-rss">RSS</a></li>
   {% if FEED_RSS %}
   <li><a href="{{ FEED_DOMAIN }}/{{ FEED_RSS }}" rel="subscribe-rss">RSS</a></li>
   {% endif %}
 
-  <li><a href="https://github.com/starp128">Me on Github</a></li>
+ 
 </ul>
 
 
@@ -19,6 +21,7 @@
 
 
 <ul class="main-navigation">
+ <li><a href="pumumu.com">home</a></li>
   {% for title, link in MENUITEMS %}
     <li><a href="{{ link }}">{{ title }}</a></li>
   {% endfor %}
