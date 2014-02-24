@@ -3,6 +3,8 @@
   {% if FEED_RSS %}
   <li><a href="{{ FEED_DOMAIN }}/{{ FEED_RSS }}" rel="subscribe-rss">RSS</a></li>
   {% endif %}
+
+  <li><a href="https://github.com/starp128">Me on Github</a></li>
 </ul>
 
 
@@ -13,6 +15,8 @@
     <input class="search" type="text" name="q" results="0" placeholder="Search"/>
   </fieldset>
 </form>
+
+
 
 <ul class="main-navigation">
   {% for title, link in MENUITEMS %}

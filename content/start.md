@@ -8,6 +8,6 @@ category:others
 ***
 参考资料
 
-1 [pelican on github](https://github.com/getpelican/pelican)
+[pelican on github](https://github.com/getpelican/pelican)
 
-2 [pelican document](http://docs.getpelican.com/)
+[pelican document](http://docs.getpelican.com/)
