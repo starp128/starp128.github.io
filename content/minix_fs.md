@@ -282,10 +282,13 @@ inode
 
 上面记录了学习文件系统的过程，已备以后查看，不足之处还望指教。
 
+===
+
+
 参考资料
 
-[oldlinux](http://www.oldlinux.org/)
+1 [oldlinux](http://www.oldlinux.org/)
 
-[The Linux Kernel Archives](https://www.kernel.org/ "内核官网")
+2 [The Linux Kernel Archives](https://www.kernel.org/ "内核官网")
 
 
