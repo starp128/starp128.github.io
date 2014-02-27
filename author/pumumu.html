@@ -73,6 +73,36 @@
   		<article>
 <header>
       <h1 class="entry-title">
+        <a href="../extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html">ext文件系统源码学习及思考</a>
+      </h1>
+      <p class="meta"><time datetime="2014-02-18T00:00:00" pubdate>Tue 18 February 2014</time></p>
+</header>
+
+  <div class="entry-content"><p>认识了linux管理文件系统的框架（也就是vfs）之后，再学习具体的文件系统就是比较容易的一件事了，下面记录了ext文件系统的学习过程，代码参考1.2.13的内核版本，这个内核版本比之现在3.x的版本可以说非常老了，但是早期版本内容注重具体实现，读起来容易很多，相信对以后继续深入学习会有很大帮助，至少现在版本的实现和早期版本的大体思想是一样的。</p>
+<h2>本文导读：</h2>
+<ul>
+<li>ext文件系统简介及设计思想</li>
+<li>ext文件系统磁盘印象结构</li>
+<li>ext文件系统的mount的过程</li>
+<li>ext文件系统的io过程</li>
+</ul>
+<hr />
+<h2>一 ext文件系统简介及设计思想</h2>
+<h3>ext文件系统简介</h3>
+<p>ext文件系统是第一个专门为linux内核打造的文件系统，但是现在基本已经不使用了，网上搜索原因大多是说它性能存在一些问题，我在看完源码之后也想不出任何原因，看来真是需要实践才能检验真理啊。</p>
+<h3>ext设计思想</h3>
+<p>文件系统要完成的功能就是管理文件，而文件就是<code>inode</code>和数据块block，不同的管理方式就形成了不同的文件系统，minix文件系统使用位图来分别管理<code>inode</code>和数据块block的分配和回收。而ext文件系统使用了链表来管理它们的分配和回收。这就是ext文件系统。可以说整个ext文件系统源码就是在实现用链表组织<code>inode</code>和数据块block。</p>
+<hr />
+<h2>二 ext文件系统磁盘印象结构</h2>
+<p><img alt="" src="./images/ext_img.png" /></p>
+<p>ext文件系统如图所示，第一个块是MBR块，第二个块是超级块，接下来是存放<code>inode</code>的区域，<code>inode ...</code></p></div>
+  <footer>
+    <a rel="full-article" href="../extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html">Read On &crarr;</a>
+  </footer>
+  		</article>
+  		<article>
+<header>
+      <h1 class="entry-title">
         <a href="../minixwen-jian-xi-tong-xue-xi.html">minix文件系统学习</a>
       </h1>
       <p class="meta"><time datetime="2013-12-29T00:00:00" pubdate>Sun 29 December 2013</time></p>
@@ -120,6 +150,9 @@
   <section>
     <h1>Recent Posts</h1>
     <ul id="recent_posts">
+      <li class="post">
+          <a href="../extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html">ext文件系统源码学习及思考</a>
+      </li>
       <li class="post">
           <a href="../minixwen-jian-xi-tong-xue-xi.html">minix文件系统学习</a>
       </li>
