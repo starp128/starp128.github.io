@@ -8,7 +8,7 @@ category:filesystem
 ##本文导读：
 
 + ext文件系统简介及设计思想
-+ ext文件系统磁盘印象结构
++ ext文件系统磁盘映像结构
 + ext文件系统的mount的过程
 + ext文件系统的io过程
 
@@ -24,7 +24,7 @@ ext文件系统是第一个专门为linux内核打造的文件系统，但是现
 
 ****
 
-##二 ext文件系统磁盘印象结构
+##二 ext文件系统磁盘映像结构
 
 ![](./images/ext_img.png)
 

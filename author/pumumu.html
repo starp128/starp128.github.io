@@ -82,7 +82,7 @@
 <h2>本文导读：</h2>
 <ul>
 <li>ext文件系统简介及设计思想</li>
-<li>ext文件系统磁盘印象结构</li>
+<li>ext文件系统磁盘映像结构</li>
 <li>ext文件系统的mount的过程</li>
 <li>ext文件系统的io过程</li>
 </ul>
@@ -93,7 +93,7 @@
 <h3>ext设计思想</h3>
 <p>文件系统要完成的功能就是管理文件，而文件就是<code>inode</code>和数据块block，不同的管理方式就形成了不同的文件系统，minix文件系统使用位图来分别管理<code>inode</code>和数据块block的分配和回收。而ext文件系统使用了链表来管理它们的分配和回收。这就是ext文件系统。可以说整个ext文件系统源码就是在实现用链表组织<code>inode</code>和数据块block。</p>
 <hr />
-<h2>二 ext文件系统磁盘印象结构</h2>
+<h2>二 ext文件系统磁盘映像结构</h2>
 <p><img alt="" src="./images/ext_img.png" /></p>
 <p>ext文件系统如图所示，第一个块是MBR块，第二个块是超级块，接下来是存放<code>inode</code>的区域，<code>inode ...</code></p></div>
   <footer>
