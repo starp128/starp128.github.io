@@ -163,7 +163,7 @@ iii `read_inode`函数最后会将不同类型`inode`的操作函数指针记录
 
 
 
-===
+****
 
 ##四 ext文件系统的IO过程
 
@@ -172,21 +172,14 @@ iii `read_inode`函数最后会将不同类型`inode`的操作函数指针记录
 
 文件系统的读写最底层的功能：
 
-+非配一个新inode
-
-+释放一个inode
-
-+非配数据block
-
-+释放数据block
-
-+读inode
-
-+写inode
-
-+读数据block 
-
-+写数据block
++ 非配一个新inode
++ 释放一个inode
++ 非配数据block
++ 释放数据block
++ 读inode
++ 写inode
++ 读数据block 
++ 写数据block
 
 
 fs/ext/Freelists.c这个文件实现了上面四个，也就是inode和block的分配和回收底层函数，文件内容大致如下：

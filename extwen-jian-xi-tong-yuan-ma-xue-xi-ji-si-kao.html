@@ -227,18 +227,20 @@
 </pre></div>
 
 
-<p>===</p>
+<hr />
 <h2>四 ext文件系统的IO过程</h2>
 <p>代码示例为1.2.13中，未参照2.x或3.x中的源码，限于水平，但是核心原理是一样的，相信不久的一天，会补充上2.x和3.x中的代码解读。</p>
 <p>文件系统的读写最底层的功能：</p>
-<p>+非配一个新inode</p>
-<p>+释放一个inode</p>
-<p>+非配数据block</p>
-<p>+释放数据block</p>
-<p>+读inode</p>
-<p>+写inode</p>
-<p>+读数据block </p>
-<p>+写数据block</p>
+<ul>
+<li>非配一个新inode</li>
+<li>释放一个inode</li>
+<li>非配数据block</li>
+<li>释放数据block</li>
+<li>读inode</li>
+<li>写inode</li>
+<li>读数据block </li>
+<li>写数据block</li>
+</ul>
 <p>fs/ext/Freelists.c这个文件实现了上面四个，也就是inode和block的分配和回收底层函数，文件内容大致如下：</p>
 <p><code>void ext_free_block(struct super_block * sb, int block)</code> </p>
 <p>释放block，将block回收到s_firstfreeblock指向的空闲链表中</p>
