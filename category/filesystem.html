@@ -63,13 +63,47 @@
 
 
 <ul class="main-navigation">
+
  <li><a href="/">home</a></li>
+
       <li><a href="../pages/about-me.html">about me</a></li>
+      <li><a href="../pages/index.html">index</a></li>
     <!-- TODO: add categories here? -->
 </ul></nav>
   <div id="main">
     <div id="content">
 <div class="blog-index">
+  		<article>
+<header>
+      <h1 class="entry-title">
+        <a href="../ext2wen-jian-xi-tong-yuan-ma-fen-xi.html">ext2文件系统源码分析</a>
+      </h1>
+      <p class="meta"><time datetime="2014-02-22T00:00:00" pubdate>Sat 22 February 2014</time></p>
+</header>
+
+  <div class="entry-content"><p>本文基于linux1.2.13内核源码，分析ext2文件系统的实现，主要分析ext2文件系统的挂载、数据块block分配。</p>
+<p><em>导读：</em></p>
+<p><a href="#chapter1">一 ext2 概述</a></p>
+<p><a href="#chapter2">二 ext2 映像结构</a></p>
+<p><a href="#chapter3">三 ext2 mount过程</a></p>
+<p><a href="#chapter4">四 ext2 数据块block的分配机制</a></p>
+<p><a name="chapter1"></a></p>
+<hr />
+<h2>一、ext2 概述</h2>
+<p>ext2是现在仍在广泛使用的一个文件系统，它对ext和minix进行了扩展和性能上的增强，上一篇文章<a href="./extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html">ext文件系统源码分析</a>中提到，文件系统的的核心就是分配和回收inode以及数据块block的方式。minix使用位图对整个块设备进行inode以及数据块block的分配和回收，ext文件系统使用链表对整个块设备进行inode以及数据块block的分配和回收，而ext2的方式更像是minix的方式1，但是又有较大的改进。</p>
+<p>1 ext2将块设备的块分成<code>block_group</code>,每个组内都是按照位图的方式管理inode和数据块block。</p>
+<p>2 数据块block的分配采用了预分配的机制。</p>
+<p>使用这两个特点使得文件尽可能的分配在相邻的块上，同一个组内，这样可以减少平均寻道时间，提高IO效率。</p>
+<p>ext2还有个特点就是在创建文件系统的时候可以根据预期的文件平均大小选择最佳的块大小，避免块的浪费。</p>
+<p><a name="chapter2"></a></p>
+<hr />
+<h2>二、ext2 映像结构</h2>
+<p><img alt="" src="./images/ext2_img.png" title="“ext2映像”" /></p>
+<p>第一个是启动引导相关的，之后开始进行块的分组，每组的结构都是一样的 ...</p></div>
+  <footer>
+    <a rel="full-article" href="../ext2wen-jian-xi-tong-yuan-ma-fen-xi.html">Read On &crarr;</a>
+  </footer>
+  		</article>
   		<article>
 <header>
       <h1 class="entry-title">
@@ -82,7 +116,7 @@
 <h2>本文导读：</h2>
 <ul>
 <li>ext文件系统简介及设计思想</li>
-<li>ext文件系统磁盘映像结构</li>
+<li>ext文件系统磁盘映像X结构</li>
 <li>ext文件系统的mount的过程</li>
 <li>ext文件系统的io过程</li>
 </ul>
@@ -133,6 +167,9 @@
   <section>
     <h1>Recent Posts</h1>
     <ul id="recent_posts">
+      <li class="post">
+          <a href="../ext2wen-jian-xi-tong-yuan-ma-fen-xi.html">ext2文件系统源码分析</a>
+      </li>
       <li class="post">
           <a href="../extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html">ext文件系统源码学习及思考</a>
       </li>

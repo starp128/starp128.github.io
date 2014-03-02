@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>ext2文件系统源码分析</title>
+  <meta name="author" content="pumumu">
+
+
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <link href="./favicon.png" rel="icon">
+  <link href="./theme/css/main.css" media="screen, projection"
+        rel="stylesheet" type="text/css">
+  <script src="./theme/js/modernizr-2.0.js"></script>
+  <script src="./theme/js/ender.js"></script>
+  <script src="./theme/js/octopress.js" type="text/javascript"></script>
+
+  <link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic"
+        rel="stylesheet" type="text/css">
+  <link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic"
+        rel="stylesheet" type="text/css">
+</head>
+
+<body>
+  <header role="banner"><hgroup>
+  <h1><a href="./">pumumu's blog</a></h1>
+    <h2>fun to learn,learn for fun</h2>
+</hgroup></header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+<!--
+  <li><a href="https://github.com/starp128">Me on Github</a></li>
+-->
+ <li><a href="https://github.com/starp128">Me on Github</a></li>
+
+
+<!--
+  <li><a href="www.pumumu.com/" rel="subscribe-rss">RSS</a></li>
+
+-->
+
+
+ 
+</ul>
+
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:pumumu.com" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+
+
+
+
+
+
+
+
+<ul class="main-navigation">
+
+ <li><a href="/">home</a></li>
+
+      <li><a href="./pages/about-me.html">about me</a></li>
+      <li><a href="./pages/index.html">index</a></li>
+    <!-- TODO: add categories here? -->
+</ul></nav>
+  <div id="main">
+    <div id="content">
+<div>
+  <article class="hentry" role="article">
+<header>
+      <h1 class="entry-title">ext2文件系统源码分析</h1>
+      <p class="meta"><time datetime="2014-02-22T00:00:00" pubdate>Sat 22 February 2014</time></p>
+</header>
+
+  <div class="entry-content"><p>本文基于linux1.2.13内核源码，分析ext2文件系统的实现，主要分析ext2文件系统的挂载、数据块block分配。</p>
+<p><em>导读：</em></p>
+<p><a href="#chapter1">一 ext2 概述</a></p>
+<p><a href="#chapter2">二 ext2 映像结构</a></p>
+<p><a href="#chapter3">三 ext2 mount过程</a></p>
+<p><a href="#chapter4">四 ext2 数据块block的分配机制</a></p>
+<p><a name="chapter1"></a></p>
+<hr />
+<h2>一、ext2 概述</h2>
+<p>ext2是现在仍在广泛使用的一个文件系统，它对ext和minix进行了扩展和性能上的增强，上一篇文章<a href="./extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html">ext文件系统源码分析</a>中提到，文件系统的的核心就是分配和回收inode以及数据块block的方式。minix使用位图对整个块设备进行inode以及数据块block的分配和回收，ext文件系统使用链表对整个块设备进行inode以及数据块block的分配和回收，而ext2的方式更像是minix的方式1，但是又有较大的改进。</p>
+<p>1 ext2将块设备的块分成<code>block_group</code>,每个组内都是按照位图的方式管理inode和数据块block。</p>
+<p>2 数据块block的分配采用了预分配的机制。</p>
+<p>使用这两个特点使得文件尽可能的分配在相邻的块上，同一个组内，这样可以减少平均寻道时间，提高IO效率。</p>
+<p>ext2还有个特点就是在创建文件系统的时候可以根据预期的文件平均大小选择最佳的块大小，避免块的浪费。</p>
+<p><a name="chapter2"></a></p>
+<hr />
+<h2>二、ext2 映像结构</h2>
+<p><img alt="" src="./images/ext2_img.png" title="“ext2映像”" /></p>
+<p>第一个是启动引导相关的，之后开始进行块的分组，每组的结构都是一样的，每组内开始第一个块是<code>super_block</code>,接下来是<code>group_descriptors</code>，这个结构是长这样的，一个块上面有很多个<code>group_descriptors</code>，总共有多少个是在格式化文件系统的时候由硬盘分区大小决定的。再接下来是数据块block的位图，表示相应块号的数据块是否被占用，每个位代表一个块，按照顺序索引。接下来是<code>inode</code>的位图，再接下来是存放<code>inode</code>的块，同样，它的数量是格式化文件系统的时候确定的。最后是数据块block的地方 <code>ext2_super_block</code>中<code>s_first_data_block</code>就指向这个块号。之后就是下一个块组，值得一提的是，每个块组中<code>super_block</code>和<code>group_descriptor</code>的内容都是一样的，而<code>inode</code>和数据块block的内容是各个块组都不一样的。文件系统在挂载的时候只是用第一个块组中的<code>super_block</code>和<code>group_descriptors</code>，其它的块组中的<code>super_block</code>和<code>group_descriptors</code>在文件系统不一致的时候使用。</p>
+<p>可以看出ext2的每个块组的结构与minix文件系统很相似。但ext2的高明之处在于数据块block的分配策略，以及将块非为块组的方式。</p>
+<p><a name="chapter3"></a> </p>
+<hr />
+<h2>三、ext2挂载过程</h2>
+<p>挂载过程就是读取<code>super_block</code>和块组描述符的过程，这个过程与上一节的ext2映像结构对照起来将很容易理解。</p>
+<p>挂载过程还是之前分析minix和ext文件系统一样，只不过现在的具体文件系统实现变成了ext2。</p>
+<p>1 首先在vfs中分配<code>super_block</code>的内存结构，调用ext2注册的读取文件系统超级块的函数，也就是<code>ext2_read_super</code>;</p>
+<p>2 <code>ext2_read_super</code>读取块设备上的超级块，块组描述符<code>group_descriptors</code>;</p>
+<p>3 将<code>super_operation</code>操作指针记录到<code>super_block</code>中;</p>
+<p>4 获取根节点.</p>
+<p>下面是每一步的详细说明：</p>
+<p>1 由<code>sys_mount</code>系统调用开始挂载的整个过程，如果是一根文件系统在系统启动的时候挂载<code>mount_root</code>调用开始，后面的过程都一样。</p>
+<div class="highlight"><pre><span class="o">**</span><span class="n">sys_mount</span><span class="o">==&gt;&gt;</span><span class="n">do_mount</span><span class="o">==&gt;&gt;</span><span class="n">read_super</span><span class="o">**</span>
+
+<span class="err">`</span><span class="n">read_super</span><span class="err">`是</span><span class="n">vfs</span><span class="err">中的一个分发者，它根据文件系统的名字调用注册到系统中的文件系统的读取超级块的函数，如下是它的组要代码：</span>
+
+<span class="c1">//根据要挂载文件系统的名字找到注册到系统中的文件系统类型数据结构</span>
+<span class="c1">//struct file_system_type *type;注册到系统中的文件系统，每个文件系统都有一个这样的结构</span>
+<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">type</span> <span class="o">=</span> <span class="n">get_fs_type</span><span class="p">(</span><span class="n">name</span><span class="p">)))</span> <span class="p">{</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s">&quot;VFS: on device %d/%d: get_fs_type(%s) failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+                    <span class="n">MAJOR</span><span class="p">(</span><span class="n">dev</span><span class="p">),</span> <span class="n">MINOR</span><span class="p">(</span><span class="n">dev</span><span class="p">),</span> <span class="n">name</span><span class="p">);</span>
+    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="n">dev</span><span class="p">;</span>
+<span class="n">s</span><span class="o">-&gt;</span><span class="n">s_flags</span> <span class="o">=</span> <span class="n">flags</span><span class="p">;</span>
+<span class="c1">//调用相应文件系统注册时候提供的读取自己的超级快的函数，这里调用的是`ext2_read_super`</span>
+<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">type</span><span class="o">-&gt;</span><span class="n">read_super</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">data</span><span class="p">,</span> <span class="n">silent</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>2 由具体的文件系统将超级块读入文件系统高速缓存区，在读入到内核内存中的<code>super_block</code>结构</p>
+<div class="highlight"><pre><span class="c1">//读取超级块，sb_block=1</span>
+<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">bh</span> <span class="o">=</span> <span class="n">bread</span> <span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="n">sb_block</span><span class="p">,</span> <span class="no">BLOCK_SIZE</span><span class="p">)))</span> <span class="p">{</span>
+    <span class="n">sb</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="mh">0</span><span class="p">;</span>
+    <span class="n">unlock_super</span> <span class="p">(</span><span class="n">sb</span><span class="p">);</span>
+    <span class="n">printk</span> <span class="p">(</span><span class="s">&quot;EXT2-fs: unable to read superblock</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">return</span> <span class="no">NULL</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>下面的这段代码将有用的信息记录到超级块结构中，这些数据有的是直接从块设备的超级块中读出的，有的是经过一定计算后的数据，总之，他们为后面进行inode和block的管理提供方便的信息：</p>
+<div class="highlight"><pre><span class="c1">//将文件系统告诉缓存区中的super_block记录到es结构，再将相关系统记录到super_block结构</span>
+<span class="n">es</span> <span class="o">=</span> <span class="p">(</span><span class="k">struct</span> <span class="n">ext2_super_block</span> <span class="o">*</span><span class="p">)</span> <span class="n">bh</span><span class="o">-&gt;</span><span class="n">b_data</span><span class="p">;</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_blocks_per_group</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_blocks_per_group</span><span class="p">;</span><span class="c1">//每个块组中的块数</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_frags_per_group</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_frags_per_group</span><span class="p">;</span><span class="c1">//每个块组中的fragment数，和块数相同，ext2中fragment目前全部和block大小一样</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_inodes_per_group</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_inodes_per_group</span><span class="p">;</span><span class="c1">//每个块组中的inode数</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_inodes_per_block</span> <span class="o">=</span> <span class="n">sb</span><span class="o">-&gt;</span><span class="n">s_blocksize</span> <span class="o">/</span>
+                   <span class="n">sizeof</span> <span class="p">(</span><span class="k">struct</span> <span class="n">ext2_inode</span><span class="p">);</span><span class="c1">//每个block上的inode数</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_itb_per_group</span> <span class="o">=</span> <span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_inodes_per_group</span> <span class="o">/</span>
+                    <span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_inodes_per_block</span><span class="p">;</span><span class="err">每个块组中</span><span class="n">inode</span><span class="err">占用的块数</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_desc_per_block</span> <span class="o">=</span> <span class="n">sb</span><span class="o">-&gt;</span><span class="n">s_blocksize</span> <span class="o">/</span>
+                 <span class="n">sizeof</span> <span class="p">(</span><span class="k">struct</span> <span class="n">ext2_group_desc</span><span class="p">);</span><span class="c1">//每个块上面组描述符数量</span>
+</pre></div>
+
+
+<p>计算块组的个数，EXT2_BLOCKS_PER_GROUP(sb)是上面提到的每个块组中的块数，超级块中并没有一个字段记录总共有多少个块组，所以根据总得块数和每个块组中的块数计算有多少个块组。<code>sb-&gt;u.ext2_sb.s_groups_count</code>是总共的块组个数，db_count是块组描述符占用的块数，每个块组中都会占用这么多个块。</p>
+<div class="highlight"><pre><span class="c1">//总共的块组个数</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_groups_count</span> <span class="o">=</span> <span class="p">(</span><span class="n">es</span><span class="o">-&gt;</span><span class="n">s_blocks_count</span> <span class="o">-</span>
+                    <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_first_data_block</span> <span class="o">+</span>
+                   <span class="no">EXT2_BLOCKS_PER_GROUP</span><span class="p">(</span><span class="n">sb</span><span class="p">)</span> <span class="o">-</span> <span class="mh">1</span><span class="p">)</span> <span class="o">/</span>
+                   <span class="no">EXT2_BLOCKS_PER_GROUP</span><span class="p">(</span><span class="n">sb</span><span class="p">);</span>
+<span class="c1">//块组描述符占用的块数</span>
+<span class="n">db_count</span> <span class="o">=</span> <span class="p">(</span><span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_groups_count</span> <span class="o">+</span> <span class="no">EXT2_DESC_PER_BLOCK</span><span class="p">(</span><span class="n">sb</span><span class="p">)</span> <span class="o">-</span> <span class="mh">1</span><span class="p">)</span> <span class="o">/</span>
+       <span class="no">EXT2_DESC_PER_BLOCK</span><span class="p">(</span><span class="n">sb</span><span class="p">)</span>
+<span class="c1">//分配一段内存，用于存放读取到的group_descriptors</span>
+<span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_group_desc</span> <span class="o">=</span> <span class="n">kmalloc</span> <span class="p">(</span><span class="n">db_count</span> <span class="o">*</span> <span class="n">sizeof</span> <span class="p">(</span><span class="k">struct</span> <span class="n">buffer_head</span> <span class="o">*</span><span class="p">),</span> <span class="no">GFP_KERNEL</span><span class="p">);</span>
+</pre></div>
+
+
+<p>3 这一步虽然简单，但是后续读写<code>inode</code>全部要使用这个函数指针，它具有重要的意义：</p>
+<div class="highlight"><pre><span class="n">sb</span><span class="o">-&gt;</span><span class="n">s_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">ext2_sops</span><span class="p">;</span><span class="c1">//将ext2文件系统的inode读写函数指针记录到`super_block`中</span>
+</pre></div>
+
+
+<p>4 调用<code>vfs</code>中的<code>iget</code>获取根<code>inode</code>，<code>iget</code>会根据<code>sb-&gt;s_op</code>中的<code>ext2_read_inode</code>再次回到具体的ext2文件系统中来读取根inode</p>
+<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">sb</span><span class="o">-&gt;</span><span class="n">s_mounted</span> <span class="o">=</span> <span class="n">iget</span> <span class="p">(</span><span class="n">sb</span><span class="p">,</span> <span class="n">EXT2_ROOT_INO</span><span class="p">)))</span> <span class="p">{</span>
+    <span class="n">sb</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">db_count</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_group_desc</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">brelse</span> <span class="p">(</span><span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_group_desc</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+    <span class="n">kfree_s</span> <span class="p">(</span><span class="n">sb</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_sb</span><span class="p">.</span><span class="n">s_group_desc</span><span class="p">,</span>
+         <span class="n">db_count</span> <span class="o">*</span> <span class="k">sizeof</span> <span class="p">(</span><span class="k">struct</span> <span class="n">buffer_head</span> <span class="o">*</span><span class="p">));</span>
+    <span class="n">brelse</span> <span class="p">(</span><span class="n">bh</span><span class="p">);</span>
+    <span class="n">printk</span> <span class="p">(</span><span class="s">&quot;EXT2-fs: get root inode failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p><a name="chapter4"></a> </p>
+<hr />
+<h2>四、ext2 数据块block的分配机制</h2>
+<p>从上面的读<code>super_block</code>和读inode的<code>ext2_read_inode</code>都看不出ext2文件系统相对于过去的minix或者是ext文件系统有什么高明之处，我认为ext2的设计的重点就是在数据块block的分配时候的算法，它在给一个文件分配数据块block时，采用了预分配的策略，分配某个块的时候，提前把这个块附近的几个块也<em>临时</em>占用了，这样别人不能使用这些块了，当这个文件扩大的时候需要再次分配数据块block，它此时就把刚才预先非配或者说刚才预留的block中分配给这个文件，如果先前没有预分配到连续的块，就从新分配一个块，并将这个新块周围的块预留下来，等待下次再非配给这个文件。这样，这个文件所分配到的block最大化的连续在一起，再次读取文件内容的时候效率就会很高！</p>
+<p>涉及到这种block分配的算法的函数主要有<code>fs/ext2/inode.c</code>中的<code>ext2_alloc_block</code>和<code>fs/ext2/balloc.c</code></p>
+<div class="highlight"><pre><span class="c1">//这个函数的总体思想就是判断有没有想要获得的块，goal代表想获得的块号，如果它被预留了，那么直接或者这个块，然后返回，如果goal没有被预留，则调用ext2_new_block从新分配一个inode并预留相关块</span>
+<span class="k">static</span> <span class="k">int</span> <span class="n">ext2_alloc_block</span> <span class="p">(</span><span class="k">struct</span> <span class="n">inode</span> <span class="o">*</span> <span class="n">inode</span><span class="p">,</span> <span class="k">unsigned</span> <span class="n">long</span> <span class="n">goal</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="p">#</span><span class="n">ifdef</span> <span class="no">EXT2FS_DEBUG</span>
+    <span class="k">static</span> <span class="k">unsigned</span> <span class="n">long</span> <span class="n">alloc_hits</span> <span class="o">=</span> <span class="mh">0</span><span class="p">,</span> <span class="n">alloc_attempts</span> <span class="o">=</span> <span class="mh">0</span><span class="p">;</span>
+<span class="p">#</span><span class="n">endif</span>
+    <span class="k">unsigned</span> <span class="n">long</span> <span class="n">result</span><span class="p">;</span>
+    <span class="k">struct</span> <span class="n">buffer_head</span> <span class="o">*</span> <span class="n">bh</span><span class="p">;</span>
+
+    <span class="n">wait_on_super</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="p">);</span>
+
+<span class="p">#</span><span class="n">ifdef</span> <span class="no">EXT2_PREALLOCATE</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_i</span><span class="p">.</span><span class="n">i_prealloc_count</span> <span class="o">&amp;&amp;</span>
+        <span class="p">(</span><span class="n">goal</span> <span class="o">==</span> <span class="n">inode</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_i</span><span class="p">.</span><span class="n">i_prealloc_block</span> <span class="o">||</span>
+         <span class="n">goal</span> <span class="o">+</span> <span class="mh">1</span> <span class="o">==</span> <span class="n">inode</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_i</span><span class="p">.</span><span class="n">i_prealloc_block</span><span class="p">))</span>
+    <span class="p">{</span>       
+        <span class="n">result</span> <span class="o">=</span> <span class="n">inode</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_i</span><span class="p">.</span><span class="n">i_prealloc_block</span><span class="o">++</span><span class="p">;</span>
+        <span class="n">inode</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_i</span><span class="p">.</span><span class="n">i_prealloc_count</span><span class="o">--</span><span class="p">;</span>
+        <span class="n">ext2_debug</span> <span class="p">(</span><span class="s">&quot;preallocation hit (%lu/%lu).</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+                <span class="o">++</span><span class="n">alloc_hits</span><span class="p">,</span> <span class="o">++</span><span class="n">alloc_attempts</span><span class="p">);</span>
+
+        <span class="cm">/* It doesn&#39;t matter if we block in getblk() since</span>
+<span class="cm">           we have already atomically allocated the block, and</span>
+<span class="cm">           are only clearing it now. */</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">bh</span> <span class="o">=</span> <span class="n">getblk</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span>
+                   <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="o">-&gt;</span><span class="n">s_blocksize</span><span class="p">)))</span> <span class="p">{</span>
+            <span class="n">ext2_error</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="p">,</span> <span class="s">&quot;ext2_alloc_block&quot;</span><span class="p">,</span>
+                    <span class="s">&quot;cannot get block %lu&quot;</span><span class="p">,</span> <span class="n">result</span><span class="p">);</span>
+            <span class="k">return</span> <span class="mh">0</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">memset</span><span class="p">(</span><span class="n">bh</span><span class="o">-&gt;</span><span class="n">b_data</span><span class="p">,</span> <span class="mh">0</span><span class="p">,</span> <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="o">-&gt;</span><span class="n">s_blocksize</span><span class="p">);</span>
+        <span class="n">bh</span><span class="o">-&gt;</span><span class="n">b_uptodate</span> <span class="o">=</span> <span class="mh">1</span><span class="p">;</span>
+        <span class="n">mark_buffer_dirty</span><span class="p">(</span><span class="n">bh</span><span class="p">,</span> <span class="mh">1</span><span class="p">);</span>
+        <span class="n">brelse</span> <span class="p">(</span><span class="n">bh</span><span class="p">);</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="n">ext2_discard_prealloc</span> <span class="p">(</span><span class="n">inode</span><span class="p">);</span>
+        <span class="n">ext2_debug</span> <span class="p">(</span><span class="s">&quot;preallocation miss (%lu/%lu).</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+                <span class="n">alloc_hits</span><span class="p">,</span> <span class="o">++</span><span class="n">alloc_attempts</span><span class="p">);</span>
+        <span class="c1">//如果goal没有被预留，则调用ext2_new_block从新分配一个inode并预留相关块</span>
+        <span class="k">if</span> <span class="p">(</span><span class="no">S_ISREG</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_mode</span><span class="p">))</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">ext2_new_block</span>
+                <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span>
+                 <span class="o">&amp;</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_i</span><span class="p">.</span><span class="n">i_prealloc_count</span><span class="p">,</span>
+                 <span class="o">&amp;</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext2_i</span><span class="p">.</span><span class="n">i_prealloc_block</span><span class="p">);</span>
+        <span class="k">else</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">ext2_new_block</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="mh">0</span><span class="p">,</span> <span class="mh">0</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">#</span><span class="k">else</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">ext2_new_block</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="mh">0</span><span class="p">,</span> <span class="mh">0</span><span class="p">);</span>
+<span class="p">#</span><span class="n">endif</span>
+
+    <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>ext2_new_block的过程引用源码中的注释很清晰：</p>
+<blockquote>
+<p>/<em>
+ * ext2_new_block uses a goal block to assist allocation.  If the goal is
+ * free, or there is a free block within 32 blocks of the goal, that block
+ * is allocated.  Otherwise a forward search is made for a free block; within 
+ * each block group the search first looks for an entire free byte in the block
+ * bitmap, and then for any free bit if that fails.
+</em>/</p>
+</blockquote></div>
+    <footer>
+<p class="meta">
+  <span class="byline author vcard">
+    Posted by <span class="fn">pumumu</span>
+  </span>
+<time datetime="2014-02-22T00:00:00" pubdate>Sat 22 February 2014</time></p>    </footer>
+  </article>
+
+
+<!-- UY BEGIN -->
+<div id="uyan_frame"></div>
+<script type="text/javascript" src="http://v2.uyan.cc/code/uyan.js?uid=1896865"></script>
+<!-- UY END -->
+
+
+</div>
+<aside class="sidebar">
+  <section>
+    <h1>Recent Posts</h1>
+    <ul id="recent_posts">
+      <li class="post">
+          <a href="./ext2wen-jian-xi-tong-yuan-ma-fen-xi.html">ext2文件系统源码分析</a>
+      </li>
+      <li class="post">
+          <a href="./extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html">ext文件系统源码学习及思考</a>
+      </li>
+      <li class="post">
+          <a href="./minixwen-jian-xi-tong-xue-xi.html">minix文件系统学习</a>
+      </li>
+      <li class="post">
+          <a href="./qi-dian.html">起点</a>
+      </li>
+    </ul>
+  </section>
+  <section>
+      
+    <h1>Categories</h1>
+    <ul id="recent_posts">
+        <li><a href="./category/filesystem.html">filesystem</a></li>
+        <li><a href="./category/others.html">others</a></li>
+    </ul>
+  </section>
+ 
+
+  <section>
+  <h1>Tags</h1>
+  </section>
+
+
+    <section>
+        <h1>Blogroll</h2>
+        <ul>
+            <li><a href="http://getpelican.com/" target="_blank">Pelican</a></li>
+            <li><a href="http://jinja.pocoo.org/" target="_blank">Jinja2</a></li>
+        </ul>
+    </section>
+</aside>    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2013 - pumumu -
+  <span class="credit">Powered by <a href="http://getpelican.com">Pelican</a></span>
+</p></footer>
+</body>
+</html>
