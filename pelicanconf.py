@@ -33,4 +33,6 @@ RELATIVE_URLS = True
 
 THEME="./pelican-octopress-theme"
 
+GOOGLE_ANALYTICS=u'UA-48907427-1'
+
 OUTPUT_PATH="."
