@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 AUTHOR = u'pumumu'
 SITENAME = u"pumumu's blog"
 SITEURL = u'www.pumumu.com'
-SITESUBTITLE=u'fun to learn,learn for fun'
+SITESUBTITLE=u'coding free'
 
 TIMEZONE = 'Asia/Shanghai'
 

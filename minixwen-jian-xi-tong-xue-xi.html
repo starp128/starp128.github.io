@@ -32,7 +32,7 @@
 <body>
   <header role="banner"><hgroup>
   <h1><a href="./">pumumu's blog</a></h1>
-    <h2>fun to learn,learn for fun</h2>
+    <h2>coding free</h2>
 </hgroup></header>
   <nav role="navigation"><ul class="subscription" data-subscription="rss">
 <!--
@@ -68,8 +68,8 @@
 
  <li><a href="/">home</a></li>
 
-      <li><a href="./pages/about-me.html">about me</a></li>
       <li><a href="./pages/index.html">index</a></li>
+      <li><a href="./pages/about-me.html">about me</a></li>
     <!-- TODO: add categories here? -->
 </ul></nav>
   <div id="main">
@@ -78,7 +78,7 @@
   <article class="hentry" role="article">
 <header>
       <h1 class="entry-title">minix文件系统学习</h1>
-      <p class="meta"><time datetime="2013-12-29T00:00:00" pubdate>Sun 29 December 2013</time></p>
+      <p class="meta"><time datetime="2013-12-29T00:00:00+08:00" pubdate>日 29 十二月 2013</time></p>
 </header>
 
   <div class="entry-content"><p>记录下学习过程，以便遗忘时可以顺着思路回忆起來。
@@ -110,70 +110,70 @@
 <p><code>setup</code>记录引导阶段BIOS读到的硬盘参数，读分区表，
 <code>mount_root</code>中主要调用<code>read_super</code>函数 ，
 <code>read_super</code>最重要的就是读取超级块：</p>
-<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">p</span><span class="o">=</span><span class="n">read_super</span><span class="p">(</span><span class="n">ROOT_DEV</span><span class="p">)))</span>
-    <span class="n">panic</span><span class="p">(</span><span class="s">&quot;Unable to mount root&quot;</span><span class="p">);</span>
+<div class="highlight"><pre>if (!(p=read_super(ROOT_DEV)))
+    panic(&quot;Unable to mount root&quot;);
 </pre></div>
 
 
 <p><code>read_super</code>做为这一大堆函数中<strong>最实在</strong>的一个函数，它很务实的从硬盘上将超级块读到内存中。</p>
 <h3>read_super又分为几步</h3>
 <p>1.先分配一个<code>super_block</code>的数据结构</p>
-<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="n">s</span> <span class="o">=</span> <span class="n">get_super</span><span class="p">(</span><span class="n">dev</span><span class="p">))</span>
-           <span class="k">return</span> <span class="n">s</span><span class="p">;</span>
-<span class="k">for</span> <span class="p">(</span><span class="n">s</span> <span class="o">=</span> <span class="mi">0</span><span class="o">+</span><span class="n">super_block</span> <span class="p">;;</span> <span class="n">s</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
-           <span class="k">if</span> <span class="p">(</span><span class="n">s</span> <span class="o">&gt;=</span> <span class="n">NR_SUPER</span><span class="o">+</span><span class="n">super_block</span><span class="p">)</span>
-            <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
-           <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="p">)</span>
-        <span class="k">break</span><span class="p">;</span>
-            <span class="p">}</span>
+<div class="highlight"><pre>if (s = get_super(dev))
+           return s;
+for (s = 0+super_block ;; s++) {
+           if (s &gt;= NR_SUPER+super_block)
+            return NULL;
+           if (!s-&gt;s_dev)
+        break;
+            }
 </pre></div>
 
 
 <p>先在内存中找所指定设备的超级快是不是已经在内存中存在了，如果存在直接返回了。
 如果不存在，则需要在内存中分配一个<code>super_block</code>用来存放从硬盘中读到的超级快。这里实在内核初始化<code>mount_root</code>，肯定不存在，要到块设备中<em>读</em>。0.11的内核中的<code>super_block</code>在内存中以数组的方式存在，最大支持八个，分配只是简单地扫描这个一维线性表，如果找个空闲的表项则停止。</p>
-<div class="highlight"><pre><span class="cp">#define NR_SUPER 8</span>
-<span class="k">struct</span> <span class="n">super_block</span> <span class="n">super_block</span><span class="p">[</span><span class="n">NR_SUPER</span><span class="p">];</span>
+<div class="highlight"><pre>#define NR_SUPER 8
+struct super_block super_block[NR_SUPER];
 </pre></div>
 
 
 <p>2.利用<code>read_super</code>读到文件系统的超级块，由于现在系统只支持minix，所以这个函数就是读minix的<code>super_block</code>的，在后面的将vfs与具体的文件系统分开之后，这个函数就是一个分发者，它调用不同文件系统的读取超级快的函数:</p>
-<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">bh</span> <span class="o">=</span> <span class="n">bread</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span><span class="mi">1</span><span class="p">)))</span> <span class="p">{</span>
-        <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
-    <span class="n">free_super</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
-    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
-    <span class="p">}</span>
-    <span class="o">*</span><span class="p">((</span><span class="k">struct</span> <span class="n">d_super_block</span> <span class="o">*</span><span class="p">)</span> <span class="n">s</span><span class="p">)</span> <span class="o">=*</span><span class="p">((</span><span class="k">struct</span> <span class="n">d_super_block</span> <span class="o">*</span><span class="p">)</span> <span class="n">bh</span><span class="o">-&gt;</span><span class="n">b_data</span><span class="p">);</span>
-    <span class="n">brelse</span><span class="p">(</span><span class="n">bh</span><span class="p">);</span>
-    <span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_magic</span> <span class="o">!=</span> <span class="n">SUPER_MAGIC</span><span class="p">)</span> <span class="p">{</span>
-        <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
-        <span class="n">free_super</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
-    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
-    <span class="p">}</span>
+<div class="highlight"><pre>if (!(bh = bread(dev,1))) {
+        s-&gt;s_dev=0;
+    free_super(s);
+    return NULL;
+    }
+    *((struct d_super_block *) s) =*((struct d_super_block *) bh-&gt;b_data);
+    brelse(bh);
+    if (s-&gt;s_magic != SUPER_MAGIC) {
+        s-&gt;s_dev = 0;
+        free_super(s);
+    return NULL;
+    }
 </pre></div>
 
 
 <p>然后读inode的位图所在的块和block位图所在的块：</p>
-<div class="highlight"><pre><span class="n">block</span><span class="o">=</span><span class="mi">2</span><span class="p">;</span>
-    <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="mi">0</span> <span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_imap_blocks</span> <span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
-            <span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_imap</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">=</span><span class="n">bread</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span><span class="n">block</span><span class="p">))</span>
-        <span class="n">block</span><span class="o">++</span><span class="p">;</span>
-     <span class="k">else</span>
-        <span class="k">break</span><span class="p">;</span>
-    <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="mi">0</span> <span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_zmap_blocks</span> <span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
-        <span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_zmap</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">=</span><span class="n">bread</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span><span class="n">block</span><span class="p">))</span>
-        <span class="n">block</span><span class="o">++</span><span class="p">;</span>
-    <span class="k">else</span>
-        <span class="k">break</span><span class="p">;</span>
+<div class="highlight"><pre>block=2;
+    for (i=0 ; i &lt; s-&gt;s_imap_blocks ; i++)
+            if (s-&gt;s_imap[i]=bread(dev,block))
+        block++;
+     else
+        break;
+    for (i=0 ; i &lt; s-&gt;s_zmap_blocks ; i++)
+        if (s-&gt;s_zmap[i]=bread(dev,block))
+        block++;
+    else
+        break;
 </pre></div>
 
 
 <p>3.iget获得跟inode，这就是最重要的几步，这样系统已经知道了当前的’/’在哪里了，在以后一切都顺利了。</p>
-<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">mi</span><span class="o">=</span><span class="n">iget</span><span class="p">(</span><span class="n">ROOT_DEV</span><span class="p">,</span><span class="n">ROOT_INO</span><span class="p">)))</span>
-        <span class="n">panic</span><span class="p">(</span><span class="s">&quot;Unable to read root i-node&quot;</span><span class="p">);</span>
-         <span class="n">mi</span><span class="o">-&gt;</span><span class="n">i_count</span> <span class="o">+=</span> <span class="mi">3</span> <span class="p">;</span>  <span class="cm">/* NOTE! it is logically used 4 times, not 1 */</span>
-         <span class="n">p</span><span class="o">-&gt;</span><span class="n">s_isup</span> <span class="o">=</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">s_imount</span> <span class="o">=</span> <span class="n">mi</span><span class="p">;</span>
-         <span class="n">current</span><span class="o">-&gt;</span><span class="n">pwd</span> <span class="o">=</span> <span class="n">mi</span><span class="p">;</span>
-         <span class="n">current</span><span class="o">-&gt;</span><span class="n">root</span> <span class="o">=</span> <span class="n">mi</span><span class="p">;</span>
+<div class="highlight"><pre>if (!(mi=iget(ROOT_DEV,ROOT_INO)))
+        panic(&quot;Unable to read root i-node&quot;);
+         mi-&gt;i_count += 3 ;  /* NOTE! it is logically used 4 times, not 1 */
+         p-&gt;s_isup = p-&gt;s_imount = mi;
+         current-&gt;pwd = mi;
+         current-&gt;root = mi;
 </pre></div>
 
 
@@ -190,8 +190,8 @@
 <p>1.2.13将VFS与实际文件系统实现分离开，如下为新增的各种文件系统类型：</p>
 <p><img alt="" src="./images/linux_1_2_13_tree.png" /></p>
 <p>在内核<code>fork</code>出第一个进程<code>init</code>内部，调用<code>sys_setup</code>，这里面主要是一些文件系统的注册函数，使得内核知道，我都支持些文件系统，也就是有哪些文件系统的操作函数集。</p>
-<div class="highlight"><pre><span class="n">register_filesystem</span><span class="p">(</span><span class="o">&amp;</span><span class="p">(</span><span class="k">struct</span> <span class="n">file_system_type</span><span class="p">)</span>
-    <span class="p">{</span><span class="n">minix_read_super</span><span class="p">,</span> <span class="s">&quot;minix&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">});</span>
+<div class="highlight"><pre>register_filesystem(&amp;(struct file_system_type)
+    {minix_read_super, &quot;minix&quot;, 1, NULL});
 </pre></div>
 
 
@@ -202,55 +202,55 @@
 </li>
 <li>
 <p>调用VFS中的<code>read_super</code>获得超级快。</p>
-<div class="highlight"><pre><span class="n">sb</span> <span class="o">=</span> <span class="n">read_super</span><span class="p">(</span><span class="n">ROOT_DEV</span><span class="p">,</span><span class="n">fs_type</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span><span class="n">root_mountflags</span><span class="p">,</span><span class="nb">NULL</span><span class="p">,</span><span class="mi">1</span><span class="p">);</span>
-<span class="k">if</span> <span class="p">(</span><span class="n">sb</span><span class="p">)</span> <span class="p">{</span>
-    <span class="n">inode</span> <span class="o">=</span> <span class="n">sb</span><span class="o">-&gt;</span><span class="n">s_mounted</span><span class="p">;</span>
-    <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_count</span> <span class="o">+=</span> <span class="mi">3</span> <span class="p">;</span>   <span class="cm">/* NOTE! it is logically used 4 times,not 1 */</span>
-    <span class="p">...</span>
-    <span class="p">}</span>
+<div class="highlight"><pre>sb = read_super(ROOT_DEV,fs_type-&gt;name,root_mountflags,NULL,1);
+if (sb) {
+    inode = sb-&gt;s_mounted;
+    inode-&gt;i_count += 3 ;   /* NOTE! it is logically used 4 times,not 1 */
+    ...
+    }
 </pre></div>
 
 
 </li>
 </ol>
 <p>来看<code>read_super</code>内部是什么情况，这个VFS的<code>read_super</code>到底与之前“朴素”的<code>read_super</code>有何区别</p>
-<div class="highlight"><pre><span class="k">static</span> <span class="k">struct</span> <span class="n">super_block</span> <span class="o">*</span> <span class="nf">read_super</span><span class="p">(</span><span class="kt">dev_t</span> <span class="n">dev</span><span class="p">,</span><span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span><span class="kt">int</span> <span class="n">flags</span><span class="p">,</span>
-                           <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">int</span> <span class="n">silent</span><span class="p">)</span>
-<span class="p">{</span>
-<span class="err">…</span>
-<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">type</span> <span class="o">=</span> <span class="n">get_fs_type</span><span class="p">(</span><span class="n">name</span><span class="p">)))</span> <span class="p">{</span>
-    <span class="n">printk</span><span class="p">(</span><span class="s">&quot;VFS: on device %d/%d: get_fs_type(%s) failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
-                             <span class="n">MAJOR</span><span class="p">(</span><span class="n">dev</span><span class="p">),</span> <span class="n">MINOR</span><span class="p">(</span><span class="n">dev</span><span class="p">),</span> <span class="n">name</span><span class="p">);</span>
-                                     <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
-<span class="p">}</span>
-<span class="err">…</span>
-<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">type</span><span class="o">-&gt;</span><span class="n">read_super</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">data</span><span class="p">,</span> <span class="n">silent</span><span class="p">))</span> <span class="p">{</span>
-    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
-    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
-<span class="p">}</span>
+<div class="highlight"><pre>static struct super_block * read_super(dev_t dev,char *name,int flags,
+                           void *data, int silent)
+{
+…
+if (!(type = get_fs_type(name))) {
+    printk(&quot;VFS: on device %d/%d: get_fs_type(%s) failed\n&quot;,
+                             MAJOR(dev), MINOR(dev), name);
+                                     return NULL;
+}
+…
+if (!type-&gt;read_super(s,data, silent)) {
+    s-&gt;s_dev = 0;
+    return NULL;
+}
 </pre></div>
 
 
 <p>它其实就是一个分发者，它根据文件系统类型调用相应类型的读取超级块的实际的执行者，而执行者就是前面注册文件系统时候提供的函数。如下才是实际从硬盘进行“读取”这个动作的函数，读取的过程就是之前在0.11版本中的那样了，先用块设备驱动读进第一个块，然后再获取根inode。注意下面这段代码最后两行是非常重要的，它将<code>minix_sops</code>的操作函数集交给了内存中的<code>super_block</code>，这样系统以后就可以使用这个函数集读取特定文件系统（这里是minix文件系统）的inode了。</p>
-<div class="highlight"><pre><span class="k">static</span> <span class="k">struct</span> <span class="n">file_system_type</span> <span class="n">minix_fs_type</span> <span class="o">=</span> <span class="p">{</span>
-       <span class="n">minix_read_super</span><span class="p">,</span> <span class="s">&quot;minix&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">NULL</span>
-<span class="p">};</span>
+<div class="highlight"><pre><span class="nt">static</span> <span class="nt">struct</span> <span class="nt">file_system_type</span> <span class="nt">minix_fs_type</span> <span class="o">=</span> <span class="p">{</span>
+       <span class="n">minix_read_super</span><span class="o">,</span> <span class="s2">&quot;minix&quot;</span><span class="o">,</span> <span class="m">1</span><span class="o">,</span> <span class="n">NULL</span>
+<span class="p">}</span><span class="o">;</span>
 
-<span class="k">struct</span> <span class="n">super_block</span> <span class="o">*</span><span class="nf">minix_read_super</span><span class="p">(</span><span class="k">struct</span> <span class="n">super_block</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span><span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> 
-                                         <span class="kt">int</span> <span class="n">silent</span><span class="p">)</span>
+<span class="nt">struct</span> <span class="nt">super_block</span> <span class="o">*</span><span class="nt">minix_read_super</span><span class="o">(</span><span class="nt">struct</span> <span class="nt">super_block</span> <span class="o">*</span><span class="nt">s</span><span class="o">,</span><span class="nt">void</span> <span class="o">*</span><span class="nt">data</span><span class="o">,</span> 
+                                         <span class="nt">int</span> <span class="nt">silent</span><span class="o">)</span>
 <span class="p">{</span>
 <span class="err">…</span>
-<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">bh</span> <span class="o">=</span> <span class="n">bread</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="n">BLOCK_SIZE</span><span class="p">)))</span> <span class="p">{</span>
-    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+<span class="n">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">bh</span> <span class="o">=</span> <span class="n">bread</span><span class="p">(</span><span class="n">dev</span><span class="o">,</span><span class="m">1</span><span class="o">,</span><span class="n">BLOCK_SIZE</span><span class="p">)))</span> <span class="err">{</span>
+    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="o">=</span><span class="m">0</span><span class="p">;</span>
     <span class="n">unlock_super</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
-    <span class="n">printk</span><span class="p">(</span><span class="s">&quot;MINIX-fs: unable to read superblock</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s2">&quot;MINIX-fs: unable to read superblock\n&quot;</span><span class="p">);</span>
     <span class="n">MOD_DEC_USE_COUNT</span><span class="p">;</span>
-    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="n">return</span> <span class="n">NULL</span><span class="p">;</span>
 <span class="p">}</span>
-<span class="n">ms</span> <span class="o">=</span> <span class="p">(</span><span class="k">struct</span> <span class="n">minix_super_block</span> <span class="o">*</span><span class="p">)</span> <span class="n">bh</span><span class="o">-&gt;</span><span class="n">b_data</span><span class="p">;</span>
+<span class="nt">ms</span> <span class="o">=</span> <span class="o">(</span><span class="nt">struct</span> <span class="nt">minix_super_block</span> <span class="o">*)</span> <span class="nt">bh-</span><span class="o">&gt;</span><span class="nt">b_data</span><span class="o">;</span>
 <span class="err">…</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">s_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">minix_sops</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">s_mounted</span> <span class="o">=</span> <span class="n">iget</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">MINIX_ROOT_INO</span><span class="p">);</span>
+<span class="nt">s-</span><span class="o">&gt;</span><span class="nt">s_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="nt">minix_sops</span><span class="o">;</span>
+<span class="nt">s-</span><span class="o">&gt;</span><span class="nt">s_mounted</span> <span class="o">=</span> <span class="nt">iget</span><span class="o">(</span><span class="nt">s</span><span class="o">,</span><span class="nt">MINIX_ROOT_INO</span><span class="o">);</span>
 </pre></div>
 
 
@@ -264,7 +264,7 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
 <h2>实验步骤</h2>
 <h3>1 先制作一个minix的映像文件</h3>
 <p>使用任意linux系统执行一下命令：</p>
-<div class="highlight"><pre><span class="n">dd</span> <span class="k">if</span><span class="o">=/</span><span class="n">dev</span><span class="o">/</span><span class="n">zero</span> <span class="n">of</span><span class="o">=</span><span class="n">minix</span><span class="p">.</span><span class="n">img</span> <span class="n">bs</span><span class="o">=</span><span class="mi">1024</span> <span class="n">count</span><span class="o">=</span><span class="mi">1440</span>
+<div class="highlight"><pre>dd if=/dev/zero of=minix.img bs=1024 count=1440
 </pre></div>
 
 
@@ -275,46 +275,46 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
 
 
 <h3>3启动boch</h3>
-<div class="highlight"><pre><span class="n">mkfs</span> <span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">fd2</span> <span class="mi">1024</span>
-<span class="n">mount</span> <span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">fd2</span> <span class="o">/</span><span class="n">mnt</span>
-<span class="n">mkdir</span> <span class="o">/</span><span class="n">mnt</span><span class="o">/</span><span class="n">dir</span>
+<div class="highlight"><pre>mkfs /dev/fd2 1024
+mount /dev/fd2 /mnt
+mkdir /mnt/dir
 </pre></div>
 
 
 <p>可以看到<code>super_block</code>如下</p>
 <p><img alt="" src="./images/minix_b1_super_block.png" /></p>
 <p>上图正好对应与<code>super_block</code>的内核数据结构。</p>
-<div class="highlight"><pre><span class="k">struct</span> <span class="n">super_block</span> <span class="p">{</span>
-       <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_ninodes</span><span class="p">;</span>
-       <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_nzones</span><span class="p">;</span>
-       <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_imap_blocks</span><span class="p">;</span>
-       <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_zmap_blocks</span><span class="p">;</span>
-       <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_firstdatazone</span><span class="p">;</span>
-       <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_log_zone_size</span><span class="p">;</span>
-       <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_max_size</span><span class="p">;</span>
-       <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_magic</span><span class="p">;</span>
-<span class="cm">/* These are only in memory */</span>
-   <span class="k">struct</span> <span class="n">buffer_head</span> <span class="o">*</span> <span class="n">s_imap</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
-   <span class="k">struct</span> <span class="n">buffer_head</span> <span class="o">*</span> <span class="n">s_zmap</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
-   <span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_dev</span><span class="p">;</span>
-   <span class="k">struct</span> <span class="n">m_inode</span> <span class="o">*</span> <span class="n">s_isup</span><span class="p">;</span>
-   <span class="k">struct</span> <span class="n">m_inode</span> <span class="o">*</span> <span class="n">s_imount</span><span class="p">;</span>
-   <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_time</span><span class="p">;</span>
-   <span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span> <span class="n">s_wait</span><span class="p">;</span>
-   <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">s_lock</span><span class="p">;</span>
-   <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">s_rd_only</span><span class="p">;</span>
-   <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">s_dirt</span><span class="p">;</span>
-<span class="p">};</span>
+<div class="highlight"><pre>struct super_block {
+       unsigned short s_ninodes;
+       unsigned short s_nzones;
+       unsigned short s_imap_blocks;
+       unsigned short s_zmap_blocks;
+       unsigned short s_firstdatazone;
+       unsigned short s_log_zone_size;
+       unsigned long s_max_size;
+       unsigned short s_magic;
+/* These are only in memory */
+   struct buffer_head * s_imap[8];
+   struct buffer_head * s_zmap[8];
+   unsigned short s_dev;
+   struct m_inode * s_isup;
+   struct m_inode * s_imount;
+   unsigned long s_time;
+   struct task_struct * s_wait;
+   unsigned char s_lock;
+   unsigned char s_rd_only;
+   unsigned char s_dirt;
+};
 </pre></div>
 
 
 <p>由上图可以看出<code>s_magic</code>为0x137F，挂载文件系统时要检查这个值，如下：</p>
-<div class="highlight"><pre><span class="cp">#define SUPER_MAGIC 0x137F</span>
-<span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_magic</span> <span class="o">!=</span> <span class="n">SUPER_MAGIC</span><span class="p">)</span> <span class="p">{</span>
-    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
-    <span class="n">free_super</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
-    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
-<span class="p">}</span>
+<div class="highlight"><pre>#define SUPER_MAGIC 0x137F
+if (s-&gt;s_magic != SUPER_MAGIC) {
+    s-&gt;s_dev = 0;
+    free_super(s);
+    return NULL;
+}
 </pre></div>
 
 
@@ -339,7 +339,7 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
   <span class="byline author vcard">
     Posted by <span class="fn">pumumu</span>
   </span>
-<time datetime="2013-12-29T00:00:00" pubdate>Sun 29 December 2013</time></p>    </footer>
+<time datetime="2013-12-29T00:00:00+08:00" pubdate>日 29 十二月 2013</time></p>    </footer>
   </article>
 
 
@@ -354,6 +354,9 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
   <section>
     <h1>Recent Posts</h1>
     <ul id="recent_posts">
+      <li class="post">
+          <a href="./share-learn-git.html">[share] learn git</a>
+      </li>
       <li class="post">
           <a href="./ext2wen-jian-xi-tong-yuan-ma-fen-xi.html">ext2文件系统源码分析</a>
       </li>
@@ -374,6 +377,7 @@ boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用�
     <ul id="recent_posts">
         <li><a href="./category/filesystem.html">filesystem</a></li>
         <li><a href="./category/others.html">others</a></li>
+        <li><a href="./category/tools.html">tools</a></li>
     </ul>
   </section>
  

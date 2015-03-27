@@ -32,7 +32,7 @@
 <body>
   <header role="banner"><hgroup>
   <h1><a href="./">pumumu's blog</a></h1>
-    <h2>fun to learn,learn for fun</h2>
+    <h2>coding free</h2>
 </hgroup></header>
   <nav role="navigation"><ul class="subscription" data-subscription="rss">
 <!--
@@ -68,8 +68,8 @@
 
  <li><a href="/">home</a></li>
 
-      <li><a href="./pages/about-me.html">about me</a></li>
       <li><a href="./pages/index.html">index</a></li>
+      <li><a href="./pages/about-me.html">about me</a></li>
     <!-- TODO: add categories here? -->
 </ul></nav>
   <div id="main">
@@ -78,7 +78,7 @@
   <article class="hentry" role="article">
 <header>
       <h1 class="entry-title">ext文件系统源码学习及思考</h1>
-      <p class="meta"><time datetime="2014-02-18T00:00:00" pubdate>Tue 18 February 2014</time></p>
+      <p class="meta"><time datetime="2014-02-18T00:00:00+08:00" pubdate>二 18 二月 2014</time></p>
 </header>
 
   <div class="entry-content"><p>认识了linux管理文件系统的框架（也就是vfs）之后，再学习具体的文件系统就是比较容易的一件事了，下面记录了ext文件系统的学习过程，代码参考1.2.13的内核版本，这个内核版本比之现在3.x的版本可以说非常老了，但是早期版本内容注重具体实现，读起来容易很多，相信对以后继续深入学习会有很大帮助，至少现在版本的实现和早期版本的大体思想是一样的。</p>
@@ -102,73 +102,73 @@
 <hr />
 <h2>三 ext文件系统的的mount过程</h2>
 <p>认识一个文件系统就顺着它的生存期来看，文件系统被使用最先要挂载它，挂载就是读取它的<code>super_block</code>到内存中，ext文件系统的超级块如下：</p>
-<div class="highlight"><pre><span class="k">struct</span> <span class="n">ext_super_block</span> <span class="p">{</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_ninodes</span><span class="p">;</span><span class="c1">//总inode数</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_nzones</span><span class="p">;</span><span class="c1">//总数据block数</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_firstfreeblock</span><span class="p">;</span><span class="c1">//第一个空闲的数据块号，这个块上面存放了空闲块的链表</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_freeblockscount</span><span class="p">;</span><span class="c1">//总空闲数据block数</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_firstfreeinode</span><span class="p">;</span><span class="c1">//第一个空闲的inode所在的数据块号</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_freeinodescount</span><span class="p">;</span><span class="c1">//总空闲inode数</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_firstdatazone</span><span class="p">;</span><span class="c1">//第一个数据block的块号</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_log_zone_size</span><span class="p">;</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_max_size</span><span class="p">;</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_reserved1</span><span class="p">;</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_reserved2</span><span class="p">;</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_reserved3</span><span class="p">;</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_reserved4</span><span class="p">;</span>
-<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">s_reserved5</span><span class="p">;</span>
-<span class="kt">unsigned</span> <span class="kt">short</span> <span class="n">s_magic</span><span class="p">;</span><span class="c1">//Magic Number，挂载是会检查这个数字是不是约定好的一个数字，不是说明不是ext文件系统</span>
-<span class="p">};</span>
+<div class="highlight"><pre>struct ext_super_block {
+unsigned long s_ninodes;//总inode数
+unsigned long s_nzones;//总数据block数
+unsigned long s_firstfreeblock;//第一个空闲的数据块号，这个块上面存放了空闲块的链表
+unsigned long s_freeblockscount;//总空闲数据block数
+unsigned long s_firstfreeinode;//第一个空闲的inode所在的数据块号
+unsigned long s_freeinodescount;//总空闲inode数
+unsigned long s_firstdatazone;//第一个数据block的块号
+unsigned long s_log_zone_size;
+unsigned long s_max_size;
+unsigned long s_reserved1;
+unsigned long s_reserved2;
+unsigned long s_reserved3;
+unsigned long s_reserved4;
+unsigned long s_reserved5;
+unsigned short s_magic;//Magic Number，挂载是会检查这个数字是不是约定好的一个数字，不是说明不是ext文件系统
+};
 </pre></div>
 
 
 <p>整个<code>mount</code>过程先由<code>vfs</code>中进行，先在内存中分配<code>super_block</code>，之后交由具体文件系统读取它的<code>super_block</code>。<code>vfs</code>中进行<code>mount</code>的过程，可以参考前文，<code>mount</code>系统调用调用注册到系统中的文件系统的<code>ext_read_super</code>函数，获取块设备上的超级块，填充内核中的<code>super_block</code>结构。</p>
 <p><code>ext_read_super</code>的主要功能是：</p>
 <p>1 直接调用块设备层的读取函数读取块设备（这句话有点绕，我们知道，块设备的IO操作一般是通过文件系统接口的，也就是通过文件系统的读写函数完成块设备的读写，现在直接跳过文件系统层，是因为这个文件系统还没有挂载上）；</p>
-<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">bh</span> <span class="o">=</span> <span class="n">bread</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">BLOCK_SIZE</span><span class="p">)))</span> <span class="p">{</span>
-    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+<div class="highlight"><pre><span class="nt">if</span> <span class="o">(!(</span><span class="nt">bh</span> <span class="o">=</span> <span class="nt">bread</span><span class="o">(</span><span class="nt">dev</span><span class="o">,</span> <span class="nt">1</span><span class="o">,</span> <span class="nt">BLOCK_SIZE</span><span class="o">)))</span> <span class="p">{</span>
+    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="o">=</span><span class="m">0</span><span class="p">;</span>
     <span class="n">unlock_super</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
-    <span class="n">printk</span><span class="p">(</span><span class="s">&quot;EXT-fs: unable to read superblock</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
-    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s2">&quot;EXT-fs: unable to read superblock\n&quot;</span><span class="p">);</span>
+    <span class="n">return</span> <span class="n">NULL</span><span class="p">;</span>
 <span class="p">}</span>
 </pre></div>
 
 
 <p>2 将读取到的块（这个块在高速缓存buffer中）中相关信息写入到内存中分配到的<code>super_block</code>数据结构中，将<code>firstfreeinode</code>和<code>firstfreeblock</code>所在的块读取到高速缓存区中，ext是通过链表来管理<code>inode</code>和block的分配和回收的，不需要用位图，这点感觉是更加智能，空间利用率提高了</p>
-<div class="highlight"><pre><span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_ninodes</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_ninodes</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_nzones</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_nzones</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_firstdatazone</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_firstdatazone</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_log_zone_size</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_log_zone_size</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_max_size</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_max_size</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">s_magic</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_magic</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_firstfreeblocknumber</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_firstfreeblock</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_freeblockscount</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_freeblockscount</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_firstfreeinodenumber</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_firstfreeinode</span><span class="p">;</span>
-<span class="n">s</span><span class="o">-&gt;</span><span class="n">u</span><span class="p">.</span><span class="n">ext_sb</span><span class="p">.</span><span class="n">s_freeinodescount</span> <span class="o">=</span> <span class="n">es</span><span class="o">-&gt;</span><span class="n">s_freeinodescount</span><span class="p">;</span>
+<div class="highlight"><pre>s-&gt;u.ext_sb.s_ninodes = es-&gt;s_ninodes;
+s-&gt;u.ext_sb.s_nzones = es-&gt;s_nzones;
+s-&gt;u.ext_sb.s_firstdatazone = es-&gt;s_firstdatazone;
+s-&gt;u.ext_sb.s_log_zone_size = es-&gt;s_log_zone_size;
+s-&gt;u.ext_sb.s_max_size = es-&gt;s_max_size;
+s-&gt;s_magic = es-&gt;s_magic;
+s-&gt;u.ext_sb.s_firstfreeblocknumber = es-&gt;s_firstfreeblock;
+s-&gt;u.ext_sb.s_freeblockscount = es-&gt;s_freeblockscount;
+s-&gt;u.ext_sb.s_firstfreeinodenumber = es-&gt;s_firstfreeinode;
+s-&gt;u.ext_sb.s_freeinodescount = es-&gt;s_freeinodescount;
 </pre></div>
 
 
 <p>3 将<code>super_operation</code>的指针保存在<code>super_block</code>中，这一步非常重要，后面的读取<code>inode</code>等的操作函数都在这个<code>super_operation</code>中。</p>
-<div class="highlight"><pre><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">ext_sops</span><span class="p">;</span>
+<div class="highlight"><pre>s-&gt;s_op = &amp;ext_sops;
 
-<span class="k">static</span> <span class="k">struct</span> <span class="n">super_operations</span> <span class="n">ext_sops</span> <span class="o">=</span> <span class="p">{</span> 
-    <span class="n">ext_read_inode</span><span class="p">,</span>
-    <span class="nb">NULL</span><span class="p">,</span>
-    <span class="n">ext_write_inode</span><span class="p">,</span>
-    <span class="n">ext_put_inode</span><span class="p">,</span>
-    <span class="n">ext_put_super</span><span class="p">,</span>
-    <span class="n">ext_write_super</span><span class="p">,</span>
-    <span class="n">ext_statfs</span><span class="p">,</span>
-    <span class="nb">NULL</span>
-<span class="p">};</span>
+static struct super_operations ext_sops = { 
+    ext_read_inode,
+    NULL,
+    ext_write_inode,
+    ext_put_inode,
+    ext_put_super,
+    ext_write_super,
+    ext_statfs,
+    NULL
+};
 </pre></div>
 
 
 <p>4调用<code>iget将根</code>indoe读入内存，并记录在<code>super_block</code>中。</p>
-<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">s_mounted</span> <span class="o">=</span> <span class="n">iget</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">EXT_ROOT_INO</span><span class="p">)))</span> <span class="p">{</span>
-    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
-    <span class="n">printk</span><span class="p">(</span><span class="s">&quot;EXT-fs: get root inode failed</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
-    <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+<div class="highlight"><pre><span class="nt">if</span> <span class="o">(!(</span><span class="nt">s-</span><span class="o">&gt;</span><span class="nt">s_mounted</span> <span class="o">=</span> <span class="nt">iget</span><span class="o">(</span><span class="nt">s</span><span class="o">,</span><span class="nt">EXT_ROOT_INO</span><span class="o">)))</span> <span class="p">{</span>
+    <span class="n">s</span><span class="o">-&gt;</span><span class="n">s_dev</span><span class="o">=</span><span class="m">0</span><span class="p">;</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s2">&quot;EXT-fs: get root inode failed\n&quot;</span><span class="p">);</span>
+    <span class="n">return</span> <span class="n">NULL</span><span class="p">;</span>
 <span class="p">}</span>
 </pre></div>
 
@@ -191,44 +191,44 @@
 
 
 <p>ii 调用<code>read_inode</code>函数，<code>read_inode</code>是<code>vfs</code>范畴的函数，它调用具体的文件系统，也就是<code>ext</code>文件系统的<code>ext_read_inode</code>函数</p>
-<div class="highlight"><pre><span class="n">read_inode</span><span class="p">(</span><span class="n">inode</span><span class="p">);</span>
-<span class="k">goto</span> <span class="n">return_it</span><span class="p">;</span>
+<div class="highlight"><pre>read_inode(inode);
+goto return_it;
 </pre></div>
 
 
 <p>iii <code>read_inode</code>函数最后会将不同类型<code>inode</code>的操作函数指针记录在<code>inode</code>内存结构中，以便后面使用。</p>
-<div class="highlight"><pre><span class="k">static</span> <span class="kt">void</span> <span class="nf">read_inode</span><span class="p">(</span><span class="k">struct</span> <span class="n">inode</span> <span class="o">*</span> <span class="n">inode</span><span class="p">)</span>
-<span class="p">{</span>
-    <span class="n">lock_inode</span><span class="p">(</span><span class="n">inode</span><span class="p">);</span>
-    <span class="k">if</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span> <span class="o">&amp;&amp;</span> <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="o">-&gt;</span><span class="n">s_op</span> <span class="o">&amp;&amp;</span> <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="o">-&gt;</span><span class="n">s_op</span><span class="o">-&gt;</span><span class="n">read_inode</span><span class="p">)</span>
-        <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_sb</span><span class="o">-&gt;</span><span class="n">s_op</span><span class="o">-&gt;</span><span class="n">read_inode</span><span class="p">(</span><span class="n">inode</span><span class="p">);</span>
-    <span class="n">unlock_inode</span><span class="p">(</span><span class="n">inode</span><span class="p">);</span>
-<span class="p">}</span>
+<div class="highlight"><pre>static void read_inode(struct inode * inode)
+{
+    lock_inode(inode);
+    if (inode-&gt;i_sb &amp;&amp; inode-&gt;i_sb-&gt;s_op &amp;&amp; inode-&gt;i_sb-&gt;s_op-&gt;read_inode)
+        inode-&gt;i_sb-&gt;s_op-&gt;read_inode(inode);
+    unlock_inode(inode);
+}
 </pre></div>
 
 
 <p>上面<code>inode-&gt;i_sb-&gt;s_op-&gt;read_inode</code>对应的就是<code>ext_read_inode</code>。<code>ext_read_inode</code>从块设备读取inode到高速缓存区。</p>
-<div class="highlight"><pre><span class="n">block</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_ino</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="n">EXT_INODES_PER_BLOCK</span><span class="p">;</span>
-<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">bh</span><span class="o">=</span><span class="n">bread</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_dev</span><span class="p">,</span> <span class="n">block</span><span class="p">,</span> <span class="n">BLOCK_SIZE</span><span class="p">)))</span>
-    <span class="n">panic</span><span class="p">(</span><span class="s">&quot;unable to read i-node block&quot;</span><span class="p">);</span>
-<span class="n">raw_inode</span> <span class="o">=</span> <span class="p">((</span><span class="k">struct</span> <span class="n">ext_inode</span> <span class="o">*</span><span class="p">)</span> <span class="n">bh</span><span class="o">-&gt;</span><span class="n">b_data</span><span class="p">)</span> <span class="o">+</span>
-    <span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_ino</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">%</span><span class="n">EXT_INODES_PER_BLOCK</span><span class="p">;</span>
+<div class="highlight"><pre>block = 2 + (inode-&gt;i_ino-1)/EXT_INODES_PER_BLOCK;
+if (!(bh=bread(inode-&gt;i_dev, block, BLOCK_SIZE)))
+    panic(&quot;unable to read i-node block&quot;);
+raw_inode = ((struct ext_inode *) bh-&gt;b_data) +
+    (inode-&gt;i_ino-1)%EXT_INODES_PER_BLOCK;
 </pre></div>
 
 
 <p><code>ext_read_inode</code>还有一个非常重要的作用，把不同<code>inode</code>的<code>inode_operations</code>记录到内存<code>inode</code>中。</p>
-<div class="highlight"><pre><span class="k">if</span> <span class="p">(</span><span class="n">S_ISREG</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_mode</span><span class="p">))</span>
-    <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">ext_file_inode_operations</span><span class="p">;</span>
-<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">S_ISDIR</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_mode</span><span class="p">))</span>
-    <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">ext_dir_inode_operations</span><span class="p">;</span>
-<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">S_ISLNK</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_mode</span><span class="p">))</span>
-    <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">ext_symlink_inode_operations</span><span class="p">;</span>
-<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">S_ISCHR</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_mode</span><span class="p">))</span>
-    <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">chrdev_inode_operations</span><span class="p">;</span>
-<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">S_ISBLK</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_mode</span><span class="p">))</span>
-    <span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_op</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">blkdev_inode_operations</span><span class="p">;</span>
-<span class="k">else</span> <span class="nf">if</span> <span class="p">(</span><span class="n">S_ISFIFO</span><span class="p">(</span><span class="n">inode</span><span class="o">-&gt;</span><span class="n">i_mode</span><span class="p">))</span>
-    <span class="n">init_fifo</span><span class="p">(</span><span class="n">inode</span><span class="p">);</span>
+<div class="highlight"><pre>if (S_ISREG(inode-&gt;i_mode))
+    inode-&gt;i_op = &amp;ext_file_inode_operations;
+else if (S_ISDIR(inode-&gt;i_mode))
+    inode-&gt;i_op = &amp;ext_dir_inode_operations;
+else if (S_ISLNK(inode-&gt;i_mode))
+    inode-&gt;i_op = &amp;ext_symlink_inode_operations;
+else if (S_ISCHR(inode-&gt;i_mode))
+    inode-&gt;i_op = &amp;chrdev_inode_operations;
+else if (S_ISBLK(inode-&gt;i_mode))
+    inode-&gt;i_op = &amp;blkdev_inode_operations;
+else if (S_ISFIFO(inode-&gt;i_mode))
+    init_fifo(inode);
 </pre></div>
 
 
@@ -422,7 +422,7 @@
   <span class="byline author vcard">
     Posted by <span class="fn">pumumu</span>
   </span>
-<time datetime="2014-02-18T00:00:00" pubdate>Tue 18 February 2014</time></p>    </footer>
+<time datetime="2014-02-18T00:00:00+08:00" pubdate>二 18 二月 2014</time></p>    </footer>
   </article>
 
 
@@ -437,6 +437,9 @@
   <section>
     <h1>Recent Posts</h1>
     <ul id="recent_posts">
+      <li class="post">
+          <a href="./share-learn-git.html">[share] learn git</a>
+      </li>
       <li class="post">
           <a href="./ext2wen-jian-xi-tong-yuan-ma-fen-xi.html">ext2文件系统源码分析</a>
       </li>
@@ -457,6 +460,7 @@
     <ul id="recent_posts">
         <li><a href="./category/filesystem.html">filesystem</a></li>
         <li><a href="./category/others.html">others</a></li>
+        <li><a href="./category/tools.html">tools</a></li>
     </ul>
   </section>
  

@@ -1,0 +1,778 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>pumumu's blog</title><link href="www.pumumu.com/" rel="alternate"></link><link href="www.pumumu.com/feeds/pumumu.atom.xml" rel="self"></link><id>www.pumumu.com/</id><updated>2015-03-27T00:00:00+08:00</updated><entry><title>[share] learn git</title><link href="www.pumumu.com/share-learn-git.html" rel="alternate"></link><updated>2015-03-27T00:00:00+08:00</updated><author><name>pumumu</name></author><id>tag:,2015-03-27:www.pumumu.com/share-learn-git.html</id><summary type="html">&lt;p&gt;This site is amazing for beginner of git.&lt;/p&gt;
+&lt;p&gt;1 &lt;a href="http://www.gitguys.com/topics/"&gt;gitauys&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="http://www.gitguys.com/wordpress/wp-content/uploads/Git-Guys.png" /&gt;&lt;/p&gt;</summary></entry><entry><title>ext2文件系统源码分析</title><link href="www.pumumu.com/ext2wen-jian-xi-tong-yuan-ma-fen-xi.html" rel="alternate"></link><updated>2014-02-22T00:00:00+08:00</updated><author><name>pumumu</name></author><id>tag:,2014-02-22:www.pumumu.com/ext2wen-jian-xi-tong-yuan-ma-fen-xi.html</id><summary type="html">&lt;p&gt;本文基于linux1.2.13内核源码，分析ext2文件系统的实现，主要分析ext2文件系统的挂载、数据块block分配。&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;导读：&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="#chapter1"&gt;一 ext2 概述&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="#chapter2"&gt;二 ext2 映像结构&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="#chapter3"&gt;三 ext2 mount过程&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="#chapter4"&gt;四 ext2 数据块block的分配机制&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a name="chapter1"&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;一、ext2 概述&lt;/h2&gt;
+&lt;p&gt;ext2是现在仍在广泛使用的一个文件系统，它对ext和minix进行了扩展和性能上的增强，上一篇文章&lt;a href="./extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html"&gt;ext文件系统源码分析&lt;/a&gt;中提到，文件系统的的核心就是分配和回收inode以及数据块block的方式。minix使用位图对整个块设备进行inode以及数据块block的分配和回收，ext文件系统使用链表对整个块设备进行inode以及数据块block的分配和回收，而ext2的方式更像是minix的方式1，但是又有较大的改进。&lt;/p&gt;
+&lt;p&gt;1 ext2将块设备的块分成&lt;code&gt;block_group&lt;/code&gt;,每个组内都是按照位图的方式管理inode和数据块block。&lt;/p&gt;
+&lt;p&gt;2 数据块block的分配采用了预分配的机制。&lt;/p&gt;
+&lt;p&gt;使用这两个特点使得文件尽可能的分配在相邻的块上，同一个组内，这样可以减少平均寻道时间，提高IO效率。&lt;/p&gt;
+&lt;p&gt;ext2还有个特点就是在创建文件系统的时候可以根据预期的文件平均大小选择最佳的块大小，避免块的浪费。&lt;/p&gt;
+&lt;p&gt;&lt;a name="chapter2"&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;二、ext2 映像结构&lt;/h2&gt;
+&lt;p&gt;&lt;img alt="" src="./images/ext2_img.png" title="“ext2映像”" /&gt;&lt;/p&gt;
+&lt;p&gt;第一个是启动引导相关的，之后开始进行块的分组，每组的结构都是一样的，每组内开始第一个块是&lt;code&gt;super_block&lt;/code&gt;,接下来是&lt;code&gt;group_descriptors&lt;/code&gt;，这个结构是长这样的，一个块上面有很多个&lt;code&gt;group_descriptors&lt;/code&gt;，总共有多少个是在格式化文件系统的时候由硬盘分区大小决定的。再接下来是数据块block的位图，表示相应块号的数据块是否被占用，每个位代表一个块，按照顺序索引。接下来是&lt;code&gt;inode&lt;/code&gt;的位图，再接下来是存放&lt;code&gt;inode&lt;/code&gt;的块，同样，它的数量是格式化文件系统的时候确定的。最后是数据块block的地方 &lt;code&gt;ext2_super_block&lt;/code&gt;中&lt;code&gt;s_first_data_block&lt;/code&gt;就指向这个块号。之后就是下一个块组，值得一提的是，每个块组中&lt;code&gt;super_block&lt;/code&gt;和&lt;code&gt;group_descriptor&lt;/code&gt;的内容都是一样的，而&lt;code&gt;inode&lt;/code&gt;和数据块block的内容是各个块组都不一样的。文件系统在挂载的时候只是用第一个块组中的&lt;code&gt;super_block&lt;/code&gt;和&lt;code&gt;group_descriptors&lt;/code&gt;，其它的块组中的&lt;code&gt;super_block&lt;/code&gt;和&lt;code&gt;group_descriptors&lt;/code&gt;在文件系统不一致的时候使用。&lt;/p&gt;
+&lt;p&gt;可以看出ext2的每个块组的结构与minix文件系统很相似。但ext2的高明之处在于数据块block的分配策略，以及将块非为块组的方式。&lt;/p&gt;
+&lt;p&gt;&lt;a name="chapter3"&gt;&lt;/a&gt; &lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;三、ext2挂载过程&lt;/h2&gt;
+&lt;p&gt;挂载过程就是读取&lt;code&gt;super_block&lt;/code&gt;和块组描述符的过程，这个过程与上一节的ext2映像结构对照起来将很容易理解。&lt;/p&gt;
+&lt;p&gt;挂载过程还是之前分析minix和ext文件系统一样，只不过现在的具体文件系统实现变成了ext2。&lt;/p&gt;
+&lt;p&gt;1 首先在vfs中分配&lt;code&gt;super_block&lt;/code&gt;的内存结构，调用ext2注册的读取文件系统超级块的函数，也就是&lt;code&gt;ext2_read_super&lt;/code&gt;;&lt;/p&gt;
+&lt;p&gt;2 &lt;code&gt;ext2_read_super&lt;/code&gt;读取块设备上的超级块，块组描述符&lt;code&gt;group_descriptors&lt;/code&gt;;&lt;/p&gt;
+&lt;p&gt;3 将&lt;code&gt;super_operation&lt;/code&gt;操作指针记录到&lt;code&gt;super_block&lt;/code&gt;中;&lt;/p&gt;
+&lt;p&gt;4 获取根节点.&lt;/p&gt;
+&lt;p&gt;下面是每一步的详细说明：&lt;/p&gt;
+&lt;p&gt;1 由&lt;code&gt;sys_mount&lt;/code&gt;系统调用开始挂载的整个过程，如果是一根文件系统在系统启动的时候挂载&lt;code&gt;mount_root&lt;/code&gt;调用开始，后面的过程都一样。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;**sys_mount==&amp;gt;&amp;gt;do_mount==&amp;gt;&amp;gt;read_super**
+
+`read_super`是vfs中的一个分发者，它根据文件系统的名字调用注册到系统中的文件系统的读取超级块的函数，如下是它的组要代码：
+
+//根据要挂载文件系统的名字找到注册到系统中的文件系统类型数据结构
+//struct file_system_type *type;注册到系统中的文件系统，每个文件系统都有一个这样的结构
+if (!(type = get_fs_type(name))) {
+    printk(&amp;quot;VFS: on device %d/%d: get_fs_type(%s) failed\n&amp;quot;,
+                    MAJOR(dev), MINOR(dev), name);
+    return NULL;
+}
+
+s-&amp;gt;s_dev = dev;
+s-&amp;gt;s_flags = flags;
+//调用相应文件系统注册时候提供的读取自己的超级快的函数，这里调用的是`ext2_read_super`
+if (!type-&amp;gt;read_super(s,data, silent)) {
+    s-&amp;gt;s_dev = 0;
+    return NULL;
+}
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;2 由具体的文件系统将超级块读入文件系统高速缓存区，在读入到内核内存中的&lt;code&gt;super_block&lt;/code&gt;结构&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="o"&gt;//&lt;/span&gt;&lt;span class="err"&gt;读取超级块，&lt;/span&gt;&lt;span class="nt"&gt;sb_block&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nt"&gt;1&lt;/span&gt;
+&lt;span class="nt"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(!(&lt;/span&gt;&lt;span class="nt"&gt;bh&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nt"&gt;bread&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nt"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;sb_block&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;BLOCK_SIZE&lt;/span&gt;&lt;span class="o"&gt;)))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_dev&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;unlock_super&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;printk&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;EXT2-fs: unable to read superblock\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;return&lt;/span&gt; &lt;span class="n"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;下面的这段代码将有用的信息记录到超级块结构中，这些数据有的是直接从块设备的超级块中读出的，有的是经过一定计算后的数据，总之，他们为后面进行inode和block的管理提供方便的信息：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;//将文件系统告诉缓存区中的super_block记录到es结构，再将相关系统记录到super_block结构
+es = (struct ext2_super_block *) bh-&amp;gt;b_data;
+sb-&amp;gt;u.ext2_sb.s_blocks_per_group = es-&amp;gt;s_blocks_per_group;//每个块组中的块数
+sb-&amp;gt;u.ext2_sb.s_frags_per_group = es-&amp;gt;s_frags_per_group;//每个块组中的fragment数，和块数相同，ext2中fragment目前全部和block大小一样
+sb-&amp;gt;u.ext2_sb.s_inodes_per_group = es-&amp;gt;s_inodes_per_group;//每个块组中的inode数
+sb-&amp;gt;u.ext2_sb.s_inodes_per_block = sb-&amp;gt;s_blocksize /
+                   sizeof (struct ext2_inode);//每个block上的inode数
+sb-&amp;gt;u.ext2_sb.s_itb_per_group = sb-&amp;gt;u.ext2_sb.s_inodes_per_group /
+                    sb-&amp;gt;u.ext2_sb.s_inodes_per_block;每个块组中inode占用的块数
+sb-&amp;gt;u.ext2_sb.s_desc_per_block = sb-&amp;gt;s_blocksize /
+                 sizeof (struct ext2_group_desc);//每个块上面组描述符数量
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;计算块组的个数，EXT2_BLOCKS_PER_GROUP(sb)是上面提到的每个块组中的块数，超级块中并没有一个字段记录总共有多少个块组，所以根据总得块数和每个块组中的块数计算有多少个块组。&lt;code&gt;sb-&amp;gt;u.ext2_sb.s_groups_count&lt;/code&gt;是总共的块组个数，db_count是块组描述符占用的块数，每个块组中都会占用这么多个块。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;//总共的块组个数
+sb-&amp;gt;u.ext2_sb.s_groups_count = (es-&amp;gt;s_blocks_count -
+                    es-&amp;gt;s_first_data_block +
+                   EXT2_BLOCKS_PER_GROUP(sb) - 1) /
+                   EXT2_BLOCKS_PER_GROUP(sb);
+//块组描述符占用的块数
+db_count = (sb-&amp;gt;u.ext2_sb.s_groups_count + EXT2_DESC_PER_BLOCK(sb) - 1) /
+       EXT2_DESC_PER_BLOCK(sb)
+//分配一段内存，用于存放读取到的group_descriptors
+sb-&amp;gt;u.ext2_sb.s_group_desc = kmalloc (db_count * sizeof (struct buffer_head *), GFP_KERNEL);
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;3 这一步虽然简单，但是后续读写&lt;code&gt;inode&lt;/code&gt;全部要使用这个函数指针，它具有重要的意义：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;sb-&amp;gt;s_op = &amp;amp;ext2_sops;//将ext2文件系统的inode读写函数指针记录到`super_block`中
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;4 调用&lt;code&gt;vfs&lt;/code&gt;中的&lt;code&gt;iget&lt;/code&gt;获取根&lt;code&gt;inode&lt;/code&gt;，&lt;code&gt;iget&lt;/code&gt;会根据&lt;code&gt;sb-&amp;gt;s_op&lt;/code&gt;中的&lt;code&gt;ext2_read_inode&lt;/code&gt;再次回到具体的ext2文件系统中来读取根inode&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nt"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(!(&lt;/span&gt;&lt;span class="nt"&gt;sb-&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="nt"&gt;s_mounted&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nt"&gt;iget&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nt"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;EXT2_ROOT_INO&lt;/span&gt;&lt;span class="o"&gt;)))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_dev&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;for&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;i&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;i&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt; &lt;span class="n"&gt;db_count&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="o"&gt;++&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_sb&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;s_group_desc&lt;/span&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;i&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="n"&gt;brelse&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_sb&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;s_group_desc&lt;/span&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;i&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;kfree_s&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_sb&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;s_group_desc&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;
+         &lt;span class="n"&gt;db_count&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="n"&gt;sizeof&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;struct&lt;/span&gt; &lt;span class="n"&gt;buffer_head&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+    &lt;span class="n"&gt;brelse&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bh&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;printk&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;EXT2-fs: get root inode failed\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;return&lt;/span&gt; &lt;span class="n"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;a name="chapter4"&gt;&lt;/a&gt; &lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;四、ext2 数据块block的分配机制&lt;/h2&gt;
+&lt;p&gt;从上面的读&lt;code&gt;super_block&lt;/code&gt;和读inode的&lt;code&gt;ext2_read_inode&lt;/code&gt;都看不出ext2文件系统相对于过去的minix或者是ext文件系统有什么高明之处，我认为ext2的设计的重点就是在数据块block的分配时候的算法，它在给一个文件分配数据块block时，采用了预分配的策略，分配某个块的时候，提前把这个块附近的几个块也&lt;em&gt;临时&lt;/em&gt;占用了，这样别人不能使用这些块了，当这个文件扩大的时候需要再次分配数据块block，它此时就把刚才预先非配或者说刚才预留的block中分配给这个文件，如果先前没有预分配到连续的块，就从新分配一个块，并将这个新块周围的块预留下来，等待下次再非配给这个文件。这样，这个文件所分配到的block最大化的连续在一起，再次读取文件内容的时候效率就会很高！&lt;/p&gt;
+&lt;p&gt;涉及到这种block分配的算法的函数主要有&lt;code&gt;fs/ext2/inode.c&lt;/code&gt;中的&lt;code&gt;ext2_alloc_block&lt;/code&gt;和&lt;code&gt;fs/ext2/balloc.c&lt;/code&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="c1"&gt;//这个函数的总体思想就是判断有没有想要获得的块，goal代表想获得的块号，如果它被预留了，那么直接或者这个块，然后返回，如果goal没有被预留，则调用ext2_new_block从新分配一个inode并预留相关块&lt;/span&gt;
+&lt;span class="k"&gt;static&lt;/span&gt; &lt;span class="kt"&gt;int&lt;/span&gt; &lt;span class="nf"&gt;ext2_alloc_block&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;struct&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="kt"&gt;unsigned&lt;/span&gt; &lt;span class="kt"&gt;long&lt;/span&gt; &lt;span class="n"&gt;goal&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="cp"&gt;#ifdef EXT2FS_DEBUG&lt;/span&gt;
+    &lt;span class="k"&gt;static&lt;/span&gt; &lt;span class="kt"&gt;unsigned&lt;/span&gt; &lt;span class="kt"&gt;long&lt;/span&gt; &lt;span class="n"&gt;alloc_hits&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;alloc_attempts&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="cp"&gt;#endif&lt;/span&gt;
+    &lt;span class="kt"&gt;unsigned&lt;/span&gt; &lt;span class="kt"&gt;long&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="k"&gt;struct&lt;/span&gt; &lt;span class="n"&gt;buffer_head&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="n"&gt;bh&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="n"&gt;wait_on_super&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+
+&lt;span class="cp"&gt;#ifdef EXT2_PREALLOCATE&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_i&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;i_prealloc_count&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt;
+        &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;goal&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_i&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;i_prealloc_block&lt;/span&gt; &lt;span class="o"&gt;||&lt;/span&gt;
+         &lt;span class="n"&gt;goal&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_i&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;i_prealloc_block&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;       
+        &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_i&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;i_prealloc_block&lt;/span&gt;&lt;span class="o"&gt;++&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_i&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;i_prealloc_count&lt;/span&gt;&lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="n"&gt;ext2_debug&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;preallocation hit (%lu/%lu).&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+                &lt;span class="o"&gt;++&lt;/span&gt;&lt;span class="n"&gt;alloc_hits&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;++&lt;/span&gt;&lt;span class="n"&gt;alloc_attempts&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+
+        &lt;span class="cm"&gt;/* It doesn&amp;#39;t matter if we block in getblk() since&lt;/span&gt;
+&lt;span class="cm"&gt;           we have already atomically allocated the block, and&lt;/span&gt;
+&lt;span class="cm"&gt;           are only clearing it now. */&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bh&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;getblk&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_dev&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+                   &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_blocksize&lt;/span&gt;&lt;span class="p"&gt;)))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="n"&gt;ext2_error&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;ext2_alloc_block&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+                    &lt;span class="s"&gt;&amp;quot;cannot get block %lu&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+            &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="n"&gt;memset&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bh&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;b_data&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_blocksize&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="n"&gt;bh&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;b_uptodate&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="n"&gt;mark_buffer_dirty&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bh&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="n"&gt;brelse&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bh&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="k"&gt;else&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="n"&gt;ext2_discard_prealloc&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="n"&gt;ext2_debug&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;preallocation miss (%lu/%lu).&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+                &lt;span class="n"&gt;alloc_hits&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;++&lt;/span&gt;&lt;span class="n"&gt;alloc_attempts&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="c1"&gt;//如果goal没有被预留，则调用ext2_new_block从新分配一个inode并预留相关块&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;S_ISREG&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_mode&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+            &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;ext2_new_block&lt;/span&gt;
+                &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;goal&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+                 &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_i&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;i_prealloc_count&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+                 &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;u&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ext2_i&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;i_prealloc_block&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="k"&gt;else&lt;/span&gt;
+            &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;ext2_new_block&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;goal&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="cp"&gt;#else&lt;/span&gt;
+    &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;ext2_new_block&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_sb&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;goal&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="cp"&gt;#endif&lt;/span&gt;
+
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;ext2_new_block的过程引用源码中的注释很清晰：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;/&lt;em&gt;
+ * ext2_new_block uses a goal block to assist allocation.  If the goal is
+ * free, or there is a free block within 32 blocks of the goal, that block
+ * is allocated.  Otherwise a forward search is made for a free block; within 
+ * each block group the search first looks for an entire free byte in the block
+ * bitmap, and then for any free bit if that fails.
+&lt;/em&gt;/&lt;/p&gt;
+&lt;/blockquote&gt;</summary></entry><entry><title>ext文件系统源码学习及思考</title><link href="www.pumumu.com/extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html" rel="alternate"></link><updated>2014-02-18T00:00:00+08:00</updated><author><name>pumumu</name></author><id>tag:,2014-02-18:www.pumumu.com/extwen-jian-xi-tong-yuan-ma-xue-xi-ji-si-kao.html</id><summary type="html">&lt;p&gt;认识了linux管理文件系统的框架（也就是vfs）之后，再学习具体的文件系统就是比较容易的一件事了，下面记录了ext文件系统的学习过程，代码参考1.2.13的内核版本，这个内核版本比之现在3.x的版本可以说非常老了，但是早期版本内容注重具体实现，读起来容易很多，相信对以后继续深入学习会有很大帮助，至少现在版本的实现和早期版本的大体思想是一样的。&lt;/p&gt;
+&lt;h2&gt;本文导读：&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;ext文件系统简介及设计思想&lt;/li&gt;
+&lt;li&gt;ext文件系统磁盘映像X结构&lt;/li&gt;
+&lt;li&gt;ext文件系统的mount的过程&lt;/li&gt;
+&lt;li&gt;ext文件系统的io过程&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr /&gt;
+&lt;h2&gt;一 ext文件系统简介及设计思想&lt;/h2&gt;
+&lt;h3&gt;ext文件系统简介&lt;/h3&gt;
+&lt;p&gt;ext文件系统是第一个专门为linux内核打造的文件系统，但是现在基本已经不使用了，网上搜索原因大多是说它性能存在一些问题，我在看完源码之后也想不出任何原因，看来真是需要实践才能检验真理啊。&lt;/p&gt;
+&lt;h3&gt;ext设计思想&lt;/h3&gt;
+&lt;p&gt;文件系统要完成的功能就是管理文件，而文件就是&lt;code&gt;inode&lt;/code&gt;和数据块block，不同的管理方式就形成了不同的文件系统，minix文件系统使用位图来分别管理&lt;code&gt;inode&lt;/code&gt;和数据块block的分配和回收。而ext文件系统使用了链表来管理它们的分配和回收。这就是ext文件系统。可以说整个ext文件系统源码就是在实现用链表组织&lt;code&gt;inode&lt;/code&gt;和数据块block。&lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;二 ext文件系统磁盘映像结构&lt;/h2&gt;
+&lt;p&gt;&lt;img alt="" src="./images/ext_img.png" /&gt;&lt;/p&gt;
+&lt;p&gt;ext文件系统如图所示，第一个块是MBR块，第二个块是超级块，接下来是存放&lt;code&gt;inode&lt;/code&gt;的区域，&lt;code&gt;inode&lt;/code&gt;保存着文件的一些元数据，比如类型，大小，拥有者等等。再接下来是存放数据的block，数据block用来存放文件的数据。从源码中&lt;code&gt;inode&lt;/code&gt;的分配和回收、数据块block的分配和回收、以及&lt;code&gt;super&lt;/code&gt;块的读取等可以推出这种映像结构，以及它们链表式的管理方式。图中&lt;code&gt;inode&lt;/code&gt;是按照在磁盘上的顺序编号，一个block可以放很多个&lt;code&gt;inode&lt;/code&gt;，采用几个空闲的&lt;code&gt;inode&lt;/code&gt;存放所有空闲&lt;code&gt;inode&lt;/code&gt;的链表，当要分配一个&lt;code&gt;inode&lt;/code&gt;的时候，从空闲的&lt;code&gt;inode&lt;/code&gt;链表头部取出一个空闲&lt;code&gt;inode&lt;/code&gt;。存放空闲&lt;code&gt;inode&lt;/code&gt;链表的本身也是空闲&lt;code&gt;inode&lt;/code&gt;，也就是说，&lt;code&gt;inode&lt;/code&gt;在自己不被使用的时候用来管理一个&lt;code&gt;inode&lt;/code&gt;链表，避免了专门非配一些存储空间来存放链表，可以看出ext设计之巧妙。随着&lt;code&gt;inode&lt;/code&gt;的不断使用，链表不断减小，存放空闲&lt;code&gt;inode&lt;/code&gt;链表的&lt;code&gt;inode&lt;/code&gt;本身就也会被分配出去。而&lt;code&gt;inode&lt;/code&gt;被释放的时候又会被重新链接到空闲链表中。数据block的管理也是这样。&lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;三 ext文件系统的的mount过程&lt;/h2&gt;
+&lt;p&gt;认识一个文件系统就顺着它的生存期来看，文件系统被使用最先要挂载它，挂载就是读取它的&lt;code&gt;super_block&lt;/code&gt;到内存中，ext文件系统的超级块如下：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;struct ext_super_block {
+unsigned long s_ninodes;//总inode数
+unsigned long s_nzones;//总数据block数
+unsigned long s_firstfreeblock;//第一个空闲的数据块号，这个块上面存放了空闲块的链表
+unsigned long s_freeblockscount;//总空闲数据block数
+unsigned long s_firstfreeinode;//第一个空闲的inode所在的数据块号
+unsigned long s_freeinodescount;//总空闲inode数
+unsigned long s_firstdatazone;//第一个数据block的块号
+unsigned long s_log_zone_size;
+unsigned long s_max_size;
+unsigned long s_reserved1;
+unsigned long s_reserved2;
+unsigned long s_reserved3;
+unsigned long s_reserved4;
+unsigned long s_reserved5;
+unsigned short s_magic;//Magic Number，挂载是会检查这个数字是不是约定好的一个数字，不是说明不是ext文件系统
+};
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;整个&lt;code&gt;mount&lt;/code&gt;过程先由&lt;code&gt;vfs&lt;/code&gt;中进行，先在内存中分配&lt;code&gt;super_block&lt;/code&gt;，之后交由具体文件系统读取它的&lt;code&gt;super_block&lt;/code&gt;。&lt;code&gt;vfs&lt;/code&gt;中进行&lt;code&gt;mount&lt;/code&gt;的过程，可以参考前文，&lt;code&gt;mount&lt;/code&gt;系统调用调用注册到系统中的文件系统的&lt;code&gt;ext_read_super&lt;/code&gt;函数，获取块设备上的超级块，填充内核中的&lt;code&gt;super_block&lt;/code&gt;结构。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;ext_read_super&lt;/code&gt;的主要功能是：&lt;/p&gt;
+&lt;p&gt;1 直接调用块设备层的读取函数读取块设备（这句话有点绕，我们知道，块设备的IO操作一般是通过文件系统接口的，也就是通过文件系统的读写函数完成块设备的读写，现在直接跳过文件系统层，是因为这个文件系统还没有挂载上）；&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nt"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(!(&lt;/span&gt;&lt;span class="nt"&gt;bh&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nt"&gt;bread&lt;/span&gt;&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nt"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;BLOCK_SIZE&lt;/span&gt;&lt;span class="o"&gt;)))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_dev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;unlock_super&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;printk&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;EXT-fs: unable to read superblock\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;return&lt;/span&gt; &lt;span class="n"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;2 将读取到的块（这个块在高速缓存buffer中）中相关信息写入到内存中分配到的&lt;code&gt;super_block&lt;/code&gt;数据结构中，将&lt;code&gt;firstfreeinode&lt;/code&gt;和&lt;code&gt;firstfreeblock&lt;/code&gt;所在的块读取到高速缓存区中，ext是通过链表来管理&lt;code&gt;inode&lt;/code&gt;和block的分配和回收的，不需要用位图，这点感觉是更加智能，空间利用率提高了&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;s-&amp;gt;u.ext_sb.s_ninodes = es-&amp;gt;s_ninodes;
+s-&amp;gt;u.ext_sb.s_nzones = es-&amp;gt;s_nzones;
+s-&amp;gt;u.ext_sb.s_firstdatazone = es-&amp;gt;s_firstdatazone;
+s-&amp;gt;u.ext_sb.s_log_zone_size = es-&amp;gt;s_log_zone_size;
+s-&amp;gt;u.ext_sb.s_max_size = es-&amp;gt;s_max_size;
+s-&amp;gt;s_magic = es-&amp;gt;s_magic;
+s-&amp;gt;u.ext_sb.s_firstfreeblocknumber = es-&amp;gt;s_firstfreeblock;
+s-&amp;gt;u.ext_sb.s_freeblockscount = es-&amp;gt;s_freeblockscount;
+s-&amp;gt;u.ext_sb.s_firstfreeinodenumber = es-&amp;gt;s_firstfreeinode;
+s-&amp;gt;u.ext_sb.s_freeinodescount = es-&amp;gt;s_freeinodescount;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;3 将&lt;code&gt;super_operation&lt;/code&gt;的指针保存在&lt;code&gt;super_block&lt;/code&gt;中，这一步非常重要，后面的读取&lt;code&gt;inode&lt;/code&gt;等的操作函数都在这个&lt;code&gt;super_operation&lt;/code&gt;中。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;s-&amp;gt;s_op = &amp;amp;ext_sops;
+
+static struct super_operations ext_sops = { 
+    ext_read_inode,
+    NULL,
+    ext_write_inode,
+    ext_put_inode,
+    ext_put_super,
+    ext_write_super,
+    ext_statfs,
+    NULL
+};
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;4调用&lt;code&gt;iget将根&lt;/code&gt;indoe读入内存，并记录在&lt;code&gt;super_block&lt;/code&gt;中。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nt"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(!(&lt;/span&gt;&lt;span class="nt"&gt;s-&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="nt"&gt;s_mounted&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nt"&gt;iget&lt;/span&gt;&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nt"&gt;s&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;EXT_ROOT_INO&lt;/span&gt;&lt;span class="o"&gt;)))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_dev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;printk&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;EXT-fs: get root inode failed\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;return&lt;/span&gt; &lt;span class="n"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;code&gt;iget&lt;/code&gt;也是整个文件系统中非常重要的函数，它获得根&lt;code&gt;inode&lt;/code&gt;的过程如下:&lt;/p&gt;
+&lt;p&gt;i 获取&lt;code&gt;inode&lt;/code&gt;内存中的数据结构，如果内存中已经存在指定设备和结点号的&lt;code&gt;inode&lt;/code&gt;，直接获取，如果不存在，新分配一个。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;repeat&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;h&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt; &lt;span class="o"&gt;;&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_hash_next&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_dev&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_dev&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="n"&gt;inode&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;i_ino&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="n"&gt;nr&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+            &lt;span class="n"&gt;goto&lt;/span&gt; &lt;span class="n"&gt;found_it&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(!&lt;/span&gt;&lt;span class="n"&gt;empty&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+        &lt;span class="n"&gt;h&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;updating&lt;/span&gt;&lt;span class="o"&gt;++;&lt;/span&gt;
+        &lt;span class="n"&gt;empty&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;get_empty_inode&lt;/span&gt;&lt;span class="o"&gt;();&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(!--&lt;/span&gt;&lt;span class="n"&gt;h&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;updating&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+            &lt;span class="n"&gt;wake_up&lt;/span&gt;&lt;span class="o"&gt;(&amp;amp;&lt;/span&gt;&lt;span class="n"&gt;update_wait&lt;/span&gt;&lt;span class="o"&gt;);&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="n"&gt;empty&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+            &lt;span class="n"&gt;goto&lt;/span&gt; &lt;span class="n"&gt;repeat&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="n"&gt;NULL&lt;/span&gt;&lt;span class="o"&gt;);&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;ii 调用&lt;code&gt;read_inode&lt;/code&gt;函数，&lt;code&gt;read_inode&lt;/code&gt;是&lt;code&gt;vfs&lt;/code&gt;范畴的函数，它调用具体的文件系统，也就是&lt;code&gt;ext&lt;/code&gt;文件系统的&lt;code&gt;ext_read_inode&lt;/code&gt;函数&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;read_inode(inode);
+goto return_it;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;iii &lt;code&gt;read_inode&lt;/code&gt;函数最后会将不同类型&lt;code&gt;inode&lt;/code&gt;的操作函数指针记录在&lt;code&gt;inode&lt;/code&gt;内存结构中，以便后面使用。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;static void read_inode(struct inode * inode)
+{
+    lock_inode(inode);
+    if (inode-&amp;gt;i_sb &amp;amp;&amp;amp; inode-&amp;gt;i_sb-&amp;gt;s_op &amp;amp;&amp;amp; inode-&amp;gt;i_sb-&amp;gt;s_op-&amp;gt;read_inode)
+        inode-&amp;gt;i_sb-&amp;gt;s_op-&amp;gt;read_inode(inode);
+    unlock_inode(inode);
+}
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;上面&lt;code&gt;inode-&amp;gt;i_sb-&amp;gt;s_op-&amp;gt;read_inode&lt;/code&gt;对应的就是&lt;code&gt;ext_read_inode&lt;/code&gt;。&lt;code&gt;ext_read_inode&lt;/code&gt;从块设备读取inode到高速缓存区。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;block = 2 + (inode-&amp;gt;i_ino-1)/EXT_INODES_PER_BLOCK;
+if (!(bh=bread(inode-&amp;gt;i_dev, block, BLOCK_SIZE)))
+    panic(&amp;quot;unable to read i-node block&amp;quot;);
+raw_inode = ((struct ext_inode *) bh-&amp;gt;b_data) +
+    (inode-&amp;gt;i_ino-1)%EXT_INODES_PER_BLOCK;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;code&gt;ext_read_inode&lt;/code&gt;还有一个非常重要的作用，把不同&lt;code&gt;inode&lt;/code&gt;的&lt;code&gt;inode_operations&lt;/code&gt;记录到内存&lt;code&gt;inode&lt;/code&gt;中。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;if (S_ISREG(inode-&amp;gt;i_mode))
+    inode-&amp;gt;i_op = &amp;amp;ext_file_inode_operations;
+else if (S_ISDIR(inode-&amp;gt;i_mode))
+    inode-&amp;gt;i_op = &amp;amp;ext_dir_inode_operations;
+else if (S_ISLNK(inode-&amp;gt;i_mode))
+    inode-&amp;gt;i_op = &amp;amp;ext_symlink_inode_operations;
+else if (S_ISCHR(inode-&amp;gt;i_mode))
+    inode-&amp;gt;i_op = &amp;amp;chrdev_inode_operations;
+else if (S_ISBLK(inode-&amp;gt;i_mode))
+    inode-&amp;gt;i_op = &amp;amp;blkdev_inode_operations;
+else if (S_ISFIFO(inode-&amp;gt;i_mode))
+    init_fifo(inode);
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;hr /&gt;
+&lt;h2&gt;四 ext文件系统的IO过程&lt;/h2&gt;
+&lt;p&gt;代码示例为1.2.13中，未参照2.x或3.x中的源码，限于水平，但是核心原理是一样的，相信不久的一天，会补充上2.x和3.x中的代码解读。&lt;/p&gt;
+&lt;p&gt;文件系统的读写最底层的功能：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;非配一个新inode&lt;/li&gt;
+&lt;li&gt;释放一个inode&lt;/li&gt;
+&lt;li&gt;非配数据block&lt;/li&gt;
+&lt;li&gt;释放数据block&lt;/li&gt;
+&lt;li&gt;读inode&lt;/li&gt;
+&lt;li&gt;写inode&lt;/li&gt;
+&lt;li&gt;读数据block &lt;/li&gt;
+&lt;li&gt;写数据block&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;fs/ext/Freelists.c这个文件实现了上面四个，也就是inode和block的分配和回收底层函数，文件内容大致如下：&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_free_block(struct super_block * sb, int block)&lt;/code&gt; &lt;/p&gt;
+&lt;p&gt;释放block，将block回收到s_firstfreeblock指向的空闲链表中&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;int ext_new_block(struct super_block * sb)&lt;/code&gt; &lt;/p&gt;
+&lt;p&gt;分配block，从s_firstfreeblock指向的空闲链表分配一个block&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;unsigned long ext_count_free_blocks(struct super_block *sb)&lt;/code&gt; &lt;/p&gt;
+&lt;p&gt;统计空闲的block&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_free_inode(struct inode * inode)&lt;/code&gt; &lt;/p&gt;
+&lt;p&gt;释放inode，将inode回收到s_firstfreeinodeblock指向的空闲链表中&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;struct inode * ext_new_inode(const struct inode * dir)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;unsigned long ext_count_free_inodes(struct super_block *sb)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;fs/ext/inode.c实现了较为上上层的函数，读写inode，读写super_block，文件逻辑块号到磁盘全局块号映射&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_put_inode(struct inode *inode)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;释放inode，并将文件truncate，也就是讲数据块也都同时释放。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_put_super(struct super_block *sb)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;struct super_block *ext_read_super(struct super_block *s,void *data, int silent)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;读入super_block，上文提到，在mount时使用。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_write_super (struct super_block *sb)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;写入super_block&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_statfs (struct super_block *sb, struct statfs *buf)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;显示一些文件系统的基本情况，输出到用户空间，&lt;code&gt;buf&lt;/code&gt;指向用户控件的地址&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;#define inode_bmap(inode,nr) ((inode)-&amp;gt;u.ext_i.i_data[(nr)])&lt;/code&gt; &lt;/p&gt;
+&lt;p&gt;将inode中的直接的数据块号映射成磁盘中的全局的块号&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;static int block_bmap(struct buffer_head * bh, int nr)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;将inode的间接数据块号映射成全局的块号&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;int ext_bmap(struct inode * inode,int block)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;映射inode的数据块，调用上面两个函数完成，每个inode可以连接很多歌数据块，存储东西，普通文件的数据块中存放普通文件的数据，设备文件的数据块中存放的设备号，目录文件的数据区存放的是目录项，从这里可以看出，目录文件盒普通文件基本一致，只不过存放了特定格式的东西，而且读写目录文件不能像读写普通文件那样，要专门的接口函数才行。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;static struct buffer_head * inode_getblk(struct inode * inode, int nr, int create)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;在高速缓存区中需找直接块的高速缓存，没有的话找出一个空闲的高速缓存用于存放从发块设备上读来的数据&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;static struct buffer_head * block_getblk(struct inode * inode,
+    struct buffer_head * bh, int nr, int create)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;在高速缓存区中需找间接块的高速缓存，没有的话找出一个空闲的高速缓存用于存放从发块设备上读来的数据&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;struct buffer_head * ext_getblk(struct inode * inode, int block, int create)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;从高速缓存中找到指定inode的逻辑块的buffer，若没有找到则分配一个高速缓存用于从块设备中读取。调用上面两个函数实现&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;struct buffer_head * ext_bread(struct inode * inode, int block, int create)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;读取指定inode的逻辑块，首先在高速缓存区中找，如找到且是uptodate的，直接返回，若没有，怎调用底层块设备读取函数&lt;code&gt;ll_rw_block(READ,1,&amp;amp;bh);&lt;/code&gt;从外部块设备读取。&lt;/p&gt;
+&lt;p&gt;文件系统已经有了bread和getblk函数了，为什么ext文件系统还要单独在实现一遍，实际上，ext_read_inode是使用bread来读取inode的块的，而ext_bread是用来读inode上的数据块的，也就是inode的数据区inode-&amp;gt;u.ext_i.i_data的块的，两者读的块不一样。ext_getblk是调用通用的getblk来实现的，而ext_bread是调用ext_getblk和底层的ll_rw_block实现的。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_read_inode(struct inode * inode)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;从块设备上读取inode，并根据inode的类型把相应类型的inode_operations的指针写入到&lt;code&gt;inode-&amp;gt;i_op&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;static struct buffer_head * ext_update_inode(struct inode * inode)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;把内存中的inode写入到buffer_head指向的文件系统高速缓存区指向的相应块中，buffer的调度分配函数会在适当时候将它回写到块设备中。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;void ext_write_inode(struct inode * inode)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;和上面基本一样，只是这个函数强制马上进行回写。&lt;/p&gt;
+&lt;p&gt;这个文件定义了&lt;strong&gt;&lt;em&gt;真正&lt;/em&gt;&lt;/strong&gt;进行 读或写数据到 具体的块设备，最重要的就是ext_read_inode和ext_getblk，读块，并将并将高速缓存中的inode写入内存中的inode&lt;/p&gt;
+&lt;p&gt;/fs/buffer.c更是真正的读或写数据到块设备，区别，读块，对块的内容不管&lt;/p&gt;
+&lt;p&gt;fs/ext/namei.c&lt;/p&gt;
+&lt;p&gt;这个文件实现了与文件系统&lt;em&gt;系统调用&lt;/em&gt;有关的函数，这个文件建立在inode.c文件的上层。也就是各种inode_operation要调用的函数，下表中ext文件系统相关的操作都基本在这个文件中实现。&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+    &lt;td&gt;&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td&gt;系统调用&lt;/td&gt;&lt;td&gt;ext文件系统实现&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+    &lt;td&gt;目录文件   d&lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;创建&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;删除&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;sys_mkdir&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;sys_rmdir&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;ext_mkdir&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;ext_rmdir&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+    &lt;td&gt;普通文件   -&lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;创建&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;删除&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;sys_open---open_namei---dir-&gt;i_op-&gt;creat&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;sys_unlink---dir-&gt;i_op-&gt;unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;ext_creat&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;ext_unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+    &lt;td&gt;设备文件 b c&lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;创建&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;删除&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;sys_mknod---dir-&gt;i_op-&gt;mknod&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;sys_unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;ext_mknod&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;ext_unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+    &lt;td&gt;硬链接文件 -&lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;创建&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;删除&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;sys_link---dir-&gt;i_op-&gt;link&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;sys_unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;ext_link&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;ext_unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+    &lt;td&gt;软链接文件 l&lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;创建&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;删除&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;sys_symlink---dir-&gt;i_op-&gt;symlink&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;sys_unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+    &lt;td&gt;
+        &lt;table&gt;
+            &lt;tr&gt;&lt;td&gt;ext_symlink&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;ext_unlink&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/td&gt;
+&lt;/tr&gt;
+
+
+
+&lt;tr&gt;
+    &lt;td&gt;未命名管道 -&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td&gt;与实际文件系统无关&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+    &lt;td&gt;socket文件 -&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td&gt;与具体文件系统无关&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;/table&gt;</summary></entry><entry><title>minix文件系统学习</title><link href="www.pumumu.com/minixwen-jian-xi-tong-xue-xi.html" rel="alternate"></link><updated>2013-12-29T00:00:00+08:00</updated><author><name>pumumu</name></author><id>tag:,2013-12-29:www.pumumu.com/minixwen-jian-xi-tong-xue-xi.html</id><summary type="html">&lt;p&gt;记录下学习过程，以便遗忘时可以顺着思路回忆起來。
+&lt;em&gt;一切尽在源码中！！！&lt;/em&gt;&lt;/p&gt;
+&lt;hr /&gt;
+&lt;p&gt;深入学习minix文件系统是从linux的0.11内核版本开始的，更确切的说，把硬盘分区、文件系统、虚拟文件系统、网络文件系统等概念弄清楚也是在仔细阅读了内核源码才清晰的。还记得读明白0.11内核中minix源码以及之后的兴奋，以及之后阅读1.x版本内核中的ext，ext2和vfs等，每次读懂一些内容都会有种醒悟的感觉。&lt;/p&gt;
+&lt;p&gt;minix文件系统是源自minix操作系统的，linux0.11内核采用了这个现成的文件系统作为内核唯一支持的文件系统，当然在后续版本中就有了自己的ext等等其它文件系统。整个minix文件系统源码并不多。内容也非常精炼，非常适合开始学习文件系统。&lt;/p&gt;
+&lt;p&gt;0.11内核tree,非常精炼，这样让我们集中经历看核心代码。&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/linux_0_11_tree.png" title="“0.11内核tree”" /&gt;&lt;/p&gt;
+&lt;p&gt;0.11内核minix文件系统源码&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/linux_0_11_files.png" /&gt;&lt;/p&gt;
+&lt;p&gt;0.11版本内核还没有将虚拟文件系统VFS从实际的文件系统中抽象出来，因为那时就只有一种文件系统，到后来0.95版本的内核才将VFS分离出来，为各种文件系统共存提供了框架，后来Remy Card为linux内核写了第一个专门的文件系统ext文件系统，并加入到0.96版本的内核中。这都是90年代初的事情了。。。可惜我现在才整明白。
+文件系统的建立是独立于系统初始化的，换句话说，文件系统是事先就建立好的。比如安装系统时候你会给一个硬盘分区，然后格式化为一个文件系统，系统引导后初始化，是读取这个文件系统并将其挂载在自己的跟&lt;strong&gt;’/’&lt;/strong&gt;上。&lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;一、明确几个概念&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;MBR、超级块、inode位图、block位图、inode区、block区&lt;/li&gt;
+&lt;li&gt;MBR在第一个扇区中，放着bootloader（446Byte），分区表（16X4=64Bbyte）,Magic Number（0x55aa）&lt;/li&gt;
+&lt;li&gt;inode存放文件的元数据&lt;/li&gt;
+&lt;li&gt;block存放文件的内容&lt;/li&gt;
+&lt;li&gt;文件夹也是一个特殊的文件，也要占用一个inode以及一个或多个block，这些block就是文件夹的内容，里面记录了这个文件夹中放置了那些文件&lt;/li&gt;
+&lt;li&gt;位图用来分配inode和block&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr /&gt;
+&lt;h2&gt;二、kernel-0.11内核初始化到根文件系统挂载&lt;/h2&gt;
+&lt;p&gt;挂载一个文件系统首先的一步，就是读取超级块，然后读取第一个inode，也就是文件系统的&lt;strong&gt;’/’&lt;/strong&gt;，有了这两步，这个文件系统基本就算挂载完了，以后可以正常读写这个文件系统了。
+原始的0.11中的minix文件系统在一个软盘上，软盘其实可以理解为硬盘中的一个分区。&lt;/p&gt;
+&lt;p&gt;当系统还在内核初始化时，内核先初始化文件系统中的块设备模型，初始化PC兼容的硬盘，然后进入用户模式下的第一个&lt;code&gt;init&lt;/code&gt;进程，在init进程中调用&lt;code&gt;setup&lt;/code&gt;系统调用，其中进行了&lt;code&gt;mount_root&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;setup&lt;/code&gt;记录引导阶段BIOS读到的硬盘参数，读分区表，
+&lt;code&gt;mount_root&lt;/code&gt;中主要调用&lt;code&gt;read_super&lt;/code&gt;函数 ，
+&lt;code&gt;read_super&lt;/code&gt;最重要的就是读取超级块：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;if (!(p=read_super(ROOT_DEV)))
+    panic(&amp;quot;Unable to mount root&amp;quot;);
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;code&gt;read_super&lt;/code&gt;做为这一大堆函数中&lt;strong&gt;最实在&lt;/strong&gt;的一个函数，它很务实的从硬盘上将超级块读到内存中。&lt;/p&gt;
+&lt;h3&gt;read_super又分为几步&lt;/h3&gt;
+&lt;p&gt;1.先分配一个&lt;code&gt;super_block&lt;/code&gt;的数据结构&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;if (s = get_super(dev))
+           return s;
+for (s = 0+super_block ;; s++) {
+           if (s &amp;gt;= NR_SUPER+super_block)
+            return NULL;
+           if (!s-&amp;gt;s_dev)
+        break;
+            }
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;先在内存中找所指定设备的超级快是不是已经在内存中存在了，如果存在直接返回了。
+如果不存在，则需要在内存中分配一个&lt;code&gt;super_block&lt;/code&gt;用来存放从硬盘中读到的超级快。这里实在内核初始化&lt;code&gt;mount_root&lt;/code&gt;，肯定不存在，要到块设备中&lt;em&gt;读&lt;/em&gt;。0.11的内核中的&lt;code&gt;super_block&lt;/code&gt;在内存中以数组的方式存在，最大支持八个，分配只是简单地扫描这个一维线性表，如果找个空闲的表项则停止。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;#define NR_SUPER 8
+struct super_block super_block[NR_SUPER];
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;2.利用&lt;code&gt;read_super&lt;/code&gt;读到文件系统的超级块，由于现在系统只支持minix，所以这个函数就是读minix的&lt;code&gt;super_block&lt;/code&gt;的，在后面的将vfs与具体的文件系统分开之后，这个函数就是一个分发者，它调用不同文件系统的读取超级快的函数:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;if (!(bh = bread(dev,1))) {
+        s-&amp;gt;s_dev=0;
+    free_super(s);
+    return NULL;
+    }
+    *((struct d_super_block *) s) =*((struct d_super_block *) bh-&amp;gt;b_data);
+    brelse(bh);
+    if (s-&amp;gt;s_magic != SUPER_MAGIC) {
+        s-&amp;gt;s_dev = 0;
+        free_super(s);
+    return NULL;
+    }
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;然后读inode的位图所在的块和block位图所在的块：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;block=2;
+    for (i=0 ; i &amp;lt; s-&amp;gt;s_imap_blocks ; i++)
+            if (s-&amp;gt;s_imap[i]=bread(dev,block))
+        block++;
+     else
+        break;
+    for (i=0 ; i &amp;lt; s-&amp;gt;s_zmap_blocks ; i++)
+        if (s-&amp;gt;s_zmap[i]=bread(dev,block))
+        block++;
+    else
+        break;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;3.iget获得跟inode，这就是最重要的几步，这样系统已经知道了当前的’/’在哪里了，在以后一切都顺利了。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;if (!(mi=iget(ROOT_DEV,ROOT_INO)))
+        panic(&amp;quot;Unable to read root i-node&amp;quot;);
+         mi-&amp;gt;i_count += 3 ;  /* NOTE! it is logically used 4 times, not 1 */
+         p-&amp;gt;s_isup = p-&amp;gt;s_imount = mi;
+         current-&amp;gt;pwd = mi;
+         current-&amp;gt;root = mi;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;比如你用mkdir系统调用，就会根据&lt;code&gt;open_namei&lt;/code&gt;找指定路径中父目录文件中有没有这么一个目录项，没有就创建一个目录项，&lt;/p&gt;
+&lt;p&gt;mkdir –&amp;gt;&lt;code&gt;sys_mkdir&lt;/code&gt;；&lt;/p&gt;
+&lt;p&gt;rmdir -&amp;gt;&lt;code&gt;sys_rmdir&lt;/code&gt;；&lt;/p&gt;
+&lt;p&gt;open对应创建新文件；&lt;/p&gt;
+&lt;p&gt;shell中的无名管道，也就是“|” 比如cat file1 | grep “hello”对应sys_pipe；&lt;/p&gt;
+&lt;p&gt;比如ls命令，就是调用read函数读取目录内容，按照minix的目录项解析；&lt;/p&gt;
+&lt;p&gt;比如rm，直接将目录项中sys_umlink就可以了，但是实际上文件还在硬盘上，只是用一般的方法下读不到了。&lt;/p&gt;
+&lt;hr /&gt;
+&lt;h2&gt;三、kernel-1.2.3内核根文件系统挂载&lt;/h2&gt;
+&lt;p&gt;接下来以1.2.13的内核中的代码为例，说明minix文件系统是怎么挂载的，思想与上述基本相同，所不同的就是在1.2.13中内核从实际的文件系统中抽象出来一个虚拟文件系统VFS，由于内核支持众多文件系统，使用VFS作为接口与各个实际的文件系统进行“交流”.&lt;/p&gt;
+&lt;p&gt;1.2.13将VFS与实际文件系统实现分离开，如下为新增的各种文件系统类型：&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/linux_1_2_13_tree.png" /&gt;&lt;/p&gt;
+&lt;p&gt;在内核&lt;code&gt;fork&lt;/code&gt;出第一个进程&lt;code&gt;init&lt;/code&gt;内部，调用&lt;code&gt;sys_setup&lt;/code&gt;，这里面主要是一些文件系统的注册函数，使得内核知道，我都支持些文件系统，也就是有哪些文件系统的操作函数集。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;register_filesystem(&amp;amp;(struct file_system_type)
+    {minix_read_super, &amp;quot;minix&amp;quot;, 1, NULL});
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;之后就是&lt;code&gt;mount_root&lt;/code&gt;，如果不是作为根文件系统，那么就直接是&lt;code&gt;sys_mount&lt;/code&gt;它们两者内部最重要的就是读取块设备上的文件系统的超级块。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;分配超级块的数据结构&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;调用VFS中的&lt;code&gt;read_super&lt;/code&gt;获得超级快。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;sb = read_super(ROOT_DEV,fs_type-&amp;gt;name,root_mountflags,NULL,1);
+if (sb) {
+    inode = sb-&amp;gt;s_mounted;
+    inode-&amp;gt;i_count += 3 ;   /* NOTE! it is logically used 4 times,not 1 */
+    ...
+    }
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;来看&lt;code&gt;read_super&lt;/code&gt;内部是什么情况，这个VFS的&lt;code&gt;read_super&lt;/code&gt;到底与之前“朴素”的&lt;code&gt;read_super&lt;/code&gt;有何区别&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;static struct super_block * read_super(dev_t dev,char *name,int flags,
+                           void *data, int silent)
+{
+…
+if (!(type = get_fs_type(name))) {
+    printk(&amp;quot;VFS: on device %d/%d: get_fs_type(%s) failed\n&amp;quot;,
+                             MAJOR(dev), MINOR(dev), name);
+                                     return NULL;
+}
+…
+if (!type-&amp;gt;read_super(s,data, silent)) {
+    s-&amp;gt;s_dev = 0;
+    return NULL;
+}
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;它其实就是一个分发者，它根据文件系统类型调用相应类型的读取超级块的实际的执行者，而执行者就是前面注册文件系统时候提供的函数。如下才是实际从硬盘进行“读取”这个动作的函数，读取的过程就是之前在0.11版本中的那样了，先用块设备驱动读进第一个块，然后再获取根inode。注意下面这段代码最后两行是非常重要的，它将&lt;code&gt;minix_sops&lt;/code&gt;的操作函数集交给了内存中的&lt;code&gt;super_block&lt;/code&gt;，这样系统以后就可以使用这个函数集读取特定文件系统（这里是minix文件系统）的inode了。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nt"&gt;static&lt;/span&gt; &lt;span class="nt"&gt;struct&lt;/span&gt; &lt;span class="nt"&gt;file_system_type&lt;/span&gt; &lt;span class="nt"&gt;minix_fs_type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+       &lt;span class="n"&gt;minix_read_super&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;minix&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="m"&gt;1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;NULL&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+
+&lt;span class="nt"&gt;struct&lt;/span&gt; &lt;span class="nt"&gt;super_block&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="nt"&gt;minix_read_super&lt;/span&gt;&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nt"&gt;struct&lt;/span&gt; &lt;span class="nt"&gt;super_block&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="nt"&gt;s&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;void&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="nt"&gt;data&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; 
+                                         &lt;span class="nt"&gt;int&lt;/span&gt; &lt;span class="nt"&gt;silent&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="err"&gt;…&lt;/span&gt;
+&lt;span class="n"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bh&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;bread&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="n"&gt;BLOCK_SIZE&lt;/span&gt;&lt;span class="p"&gt;)))&lt;/span&gt; &lt;span class="err"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;s_dev&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;unlock_super&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;printk&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;MINIX-fs: unable to read superblock\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="n"&gt;MOD_DEC_USE_COUNT&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;return&lt;/span&gt; &lt;span class="n"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="nt"&gt;ms&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nt"&gt;struct&lt;/span&gt; &lt;span class="nt"&gt;minix_super_block&lt;/span&gt; &lt;span class="o"&gt;*)&lt;/span&gt; &lt;span class="nt"&gt;bh-&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="nt"&gt;b_data&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+&lt;span class="err"&gt;…&lt;/span&gt;
+&lt;span class="nt"&gt;s-&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="nt"&gt;s_op&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="nt"&gt;minix_sops&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+&lt;span class="nt"&gt;s-&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="nt"&gt;s_mounted&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nt"&gt;iget&lt;/span&gt;&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nt"&gt;s&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;MINIX_ROOT_INO&lt;/span&gt;&lt;span class="o"&gt;);&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;hr /&gt;
+&lt;h2&gt;四、实验&lt;/h2&gt;
+&lt;p&gt;制作一个minix的文件系统，并挂载使用它，深入分析它的结构。&lt;/p&gt;
+&lt;h2&gt;实验过程&lt;/h2&gt;
+&lt;p&gt;使用boch虚拟机作为主要实验环境，在boch中运行0.11的内核的linux系统（这个实验环境可以在&lt;a href="http://www.oldlinux.org/"&gt;oldlinux&lt;/a&gt;网站找到）。
+boch可以作为学习0.11版本内核的一个实验环境，oldlinux上使用这个内核搭建了一个简单系统，作为入门学习非常合适。接下来先制作一个影响文件模拟一个软盘。
+将这个软盘插入到boch虚拟机中，启动boch中的linux系统，并在这个软盘上创建minix文件系统，挂载它并使用它，最后分析这个映像文件来分析minix文件系统结构。&lt;/p&gt;
+&lt;h2&gt;实验步骤&lt;/h2&gt;
+&lt;h3&gt;1 先制作一个minix的映像文件&lt;/h3&gt;
+&lt;p&gt;使用任意linux系统执行一下命令：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;dd if=/dev/zero of=minix.img bs=1024 count=1440
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;这样1.44M的软盘就制作好了，这样制作出1.44M大小，也就是一个软盘大小的映像文件，文件内容全部是0.&lt;/p&gt;
+&lt;h3&gt;2 将其安装到boch的floppy b里面，修改boch的配置文件&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="n"&gt;floppyb&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="n"&gt;_44&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;fd144.img&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="n"&gt;status&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;inserted&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;3启动boch&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;mkfs /dev/fd2 1024
+mount /dev/fd2 /mnt
+mkdir /mnt/dir
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;可以看到&lt;code&gt;super_block&lt;/code&gt;如下&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/minix_b1_super_block.png" /&gt;&lt;/p&gt;
+&lt;p&gt;上图正好对应与&lt;code&gt;super_block&lt;/code&gt;的内核数据结构。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;struct super_block {
+       unsigned short s_ninodes;
+       unsigned short s_nzones;
+       unsigned short s_imap_blocks;
+       unsigned short s_zmap_blocks;
+       unsigned short s_firstdatazone;
+       unsigned short s_log_zone_size;
+       unsigned long s_max_size;
+       unsigned short s_magic;
+/* These are only in memory */
+   struct buffer_head * s_imap[8];
+   struct buffer_head * s_zmap[8];
+   unsigned short s_dev;
+   struct m_inode * s_isup;
+   struct m_inode * s_imount;
+   unsigned long s_time;
+   struct task_struct * s_wait;
+   unsigned char s_lock;
+   unsigned char s_rd_only;
+   unsigned char s_dirt;
+};
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;由上图可以看出&lt;code&gt;s_magic&lt;/code&gt;为0x137F，挂载文件系统时要检查这个值，如下：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;#define SUPER_MAGIC 0x137F
+if (s-&amp;gt;s_magic != SUPER_MAGIC) {
+    s-&amp;gt;s_dev = 0;
+    free_super(s);
+    return NULL;
+}
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Inode block map&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/minix_b2_inode_map.png" /&gt;&lt;/p&gt;
+&lt;p&gt;位图中显示有三个inode，bit0对应的0号不适用，1号就是根inode 2号是自己创建的“dir”的inode&lt;/p&gt;
+&lt;p&gt;Block map&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/minix_b3_block_map.png" /&gt;&lt;/p&gt;
+&lt;p&gt;也是有三个块，0块不用，一块是根目录的数据块，2号块是dir目录的数据块，尽管是一个空目录，但他还是占用了一个数据块，实际上这个块里面放着”.””..”两个目录项，指向当前目录和上层目录。&lt;/p&gt;
+&lt;p&gt;inode&lt;/p&gt;
+&lt;p&gt;这里放置了inode。&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/minix_b4_inode.png" /&gt;&lt;/p&gt;
+&lt;p&gt;下面是一张比较完整的图：&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="./images/minix_img.png" /&gt;&lt;/p&gt;
+&lt;p&gt;上面记录了学习文件系统的过程，已备以后查看，不足之处还望指教。&lt;/p&gt;
+&lt;p&gt;===&lt;/p&gt;
+&lt;p&gt;参考资料&lt;/p&gt;
+&lt;p&gt;1 &lt;a href="http://www.oldlinux.org/"&gt;oldlinux&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;2 &lt;a href="https://www.kernel.org/" title="内核官网"&gt;The Linux Kernel Archives&lt;/a&gt;&lt;/p&gt;</summary></entry><entry><title>起点</title><link href="www.pumumu.com/qi-dian.html" rel="alternate"></link><updated>2013-12-08T00:00:00+08:00</updated><author><name>pumumu</name></author><id>tag:,2013-12-08:www.pumumu.com/qi-dian.html</id><summary type="html">&lt;p&gt;终于有了域名,可以动力十足的写博客了，这样的话既可以督促自己记录平时的工作学习，又能学习一些实际搭建网站方面的知识，建立这个博客主要都是从网上搜来教程然后一步步建立起来的，感谢大家乐于分享的精神，网页使用了pelican产生，而pelican又是使用了很多的优秀的开源工具。使用markdown标记语言可以近似于直接写纯文本一样，产生的页面非常简单漂亮。用来写博客在合适不过。&lt;/p&gt;
+&lt;hr /&gt;
+&lt;p&gt;参考资料&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://github.com/getpelican/pelican"&gt;pelican on github&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="http://docs.getpelican.com/"&gt;pelican document&lt;/a&gt;&lt;/p&gt;</summary></entry></feed>
